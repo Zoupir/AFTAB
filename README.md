@@ -28,3 +28,12 @@ See [research plan](docs/RESEARCH.md) and [security scope](SECURITY.md).
 
 ## Diagnostics
 Structured JSON event logging is implemented for process startup, gateway and SOCKS failures and the local administrator API. See [diagnostics and troubleshooting](docs/DIAGNOSTICS.md). Privacy-sensitive fields are intentionally excluded. This is experimental diagnostics, not a complete security audit log.
+
+
+## Browser-based setup and management
+
+AFTAB now includes a **multilingual graphical research control panel** (Persian, English, German and Arabic). On first launch, the installer must choose their own administrator username and password; there is **no default password** and existing passwords are not written into logs. On Windows, launching the server executable with default options attempts to open `http://127.0.0.1:19090` automatically.
+
+After signing in, the installer can create accounts, view structured diagnostic events, configure a loopback-only TLS gateway and run a local TLS handshake test. For screenshots, setup instructions and scope limitations, see [Graphical setup](docs/GUI-SETUP.md).
+
+**This is still an experimental TLS SOCKS proxy, not a production VPN.** Android, native VPN TUN, internet-facing provisioning, a hardened web control plane and anti-censorship claims are out of scope of the current build.
