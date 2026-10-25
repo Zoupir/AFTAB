@@ -2,13 +2,14 @@
 package observability
 
 import (
+ "crypto/rand"
+ "encoding/hex"
  "errors"
  "io"
  "log/slog"
  "os"
  "strings"
  "sync"
- "time"
 )
 
 var ErrInvalidLevel=errors.New("invalid log level")
@@ -54,4 +55,4 @@ func(l *Logger) Log(level,component,event,requestID,code string,fields ...any){
  default:l.log.Info("aftab",args...)
  }
 }
-func ID()string{return time.Now().UTC().Format("20060102T150405.000000000Z")}
+func ID()string{var b [12]byte;if _,err:=rand.Read(b[:]);err!=nil{return "unavailable"};return hex.EncodeToString(b[:])}
