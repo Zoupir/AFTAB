@@ -46,6 +46,18 @@ type User struct {
 type database struct {AdminToken string `json:"admin_token"`; Users map[string]*User `json:"users"`}
 type store struct {mu sync.Mutex; path string; db database; pendingBytes int64; lastSave time.Time}
 func newToken() string {b:=make([]byte,32);if _,e:=rand.Read(b);e!=nil{panic(e)};return hex.EncodeToString(b)}
+func tokenDigest(token string)string{
+ d:=sha256.Sum256([]byte(token))
+ return "sha256:"+hex.EncodeToString(d[:])
+}
+func tokenMatches(presented,stored string)bool{
+ if strings.HasPrefix(stored,"sha256:"){
+  digest:=tokenDigest(presented)
+  return subtle.ConstantTimeCompare([]byte(digest),[]byte(stored))==1
+ }
+ // Backwards compatibility for pre-hash research accounts only.
+ return subtle.ConstantTimeCompare([]byte(presented),[]byte(stored))==1
+}
 func load(path string)(*store,error){
  s:=&store{path:path}
  b,e:=os.ReadFile(path)
@@ -68,7 +80,7 @@ func(s *store)save()error{
 func(s *store)userFor(t string)string{
  s.mu.Lock();defer s.mu.Unlock()
  for id,u:=range s.db.Users{
-  if subtle.ConstantTimeCompare([]byte(t),[]byte(u.Token))!=1||u.Disabled{continue}
+  if !tokenMatches(t,u.Token)||u.Disabled{continue}
   if u.Expires!=""{at,e:=time.Parse(time.RFC3339,u.Expires);if e!=nil||time.Now().After(at){continue}}
   if u.QuotaBytes>0&&u.UsedBytes>=u.QuotaBytes{continue}
   return id
@@ -229,7 +241,7 @@ func admin(addr string,s *store)error{
   s.mu.Lock();defer s.mu.Unlock()
   if _,ok:=s.db.Users[q.Name];ok{http.Error(w,"duplicate",409);return}
   t:=newToken()
-  s.db.Users[q.Name]=&User{Name:q.Name,Token:t,Expires:time.Now().Add(time.Duration(q.Days)*24*time.Hour).UTC().Format(time.RFC3339),QuotaBytes:q.GB*1073741824}
+  s.db.Users[q.Name]=&User{Name:q.Name,Token:tokenDigest(t),Expires:time.Now().Add(time.Duration(q.Days)*24*time.Hour).UTC().Format(time.RFC3339),QuotaBytes:q.GB*1073741824}
   if e:=s.save();e!=nil{http.Error(w,"storage",500);return}
   _=json.NewEncoder(w).Encode(map[string]string{"name":q.Name,"token":t})
  })
