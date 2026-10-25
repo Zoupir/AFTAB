@@ -104,3 +104,11 @@ func TestDesktopDisconnectClosesTrackedSockets(t *testing.T){
  if _,e:=a.Write([]byte("x"));e==nil{t.Fatal("tracked connection not closed")}
  if tracker.track(b){t.Fatal("tracker accepted a socket after shutdown")}
 }
+
+func TestDesktopLogViewerTrimsInvalidRecords(t *testing.T){
+ p:=filepath.Join(t.TempDir(),"events.jsonl")
+ records:=`{"time":"2026-10-26T00:00:00Z","level":"WARN","component":"desktop","event":"connection_test_failed","code":"tls_unavailable"}`+"\n"+`invalid JSON`+"\n"
+ if e:=os.WriteFile(p,[]byte(records),0600);e!=nil{t.Fatal(e)}
+ events:=readDesktopEvents(p)
+ if len(events)!=1||events[0].Code!="tls_unavailable"{t.Fatalf("wrong diagnostic events: %+v",events)}
+}
