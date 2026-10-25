@@ -49,11 +49,17 @@ func newDesktop(configFile string)(*desktopApp,error){
  if errors.Is(e,os.ErrNotExist){return a,nil}
  if e!=nil{return nil,e}
  if e=json.Unmarshal(b,&a.cfg);e!=nil{return nil,errors.New("invalid desktop configuration")}
+ a.cfg.Token,e=unprotectToken(a.cfg.Token)
+ if e!=nil{return nil,errors.New("could not unlock saved account token")}
  return a,nil
 }
 func(a *desktopApp) persist(c clientConfig)error{
  if e:=os.MkdirAll(filepath.Dir(a.configFile),0700);e!=nil{return e}
- b,e:=json.MarshalIndent(c,"","  ");if e!=nil{return e}
+ persisted:=c
+ var e error
+ persisted.Token,e=protectToken(c.Token)
+ if e!=nil{return e}
+ b,e:=json.MarshalIndent(persisted,"","  ");if e!=nil{return e}
  tmp:=a.configFile+".tmp"
  if e=os.WriteFile(tmp,b,0600);e!=nil{return e}
  if e=os.Rename(tmp,a.configFile);e!=nil{_ =os.Remove(tmp);return e}
