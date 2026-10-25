@@ -1,6 +1,7 @@
 package main
 
 import (
+ "bufio"
  "encoding/hex"
  "encoding/binary"
  "fmt"
@@ -52,7 +53,11 @@ func TestSOCKSThroughLocalPinnedGateway(t *testing.T){
  if _,e=io.ReadFull(client,connectReply);e!=nil{t.Fatalf("SOCKS CONNECT failed: %v",e)}
  if connectReply[1]!=0{t.Fatalf("SOCKS CONNECT denied: %v",connectReply)}
  if _,e=io.WriteString(client,"GET / HTTP/1.1\r\nHost: "+destHost+"\r\nConnection: close\r\n\r\n");e!=nil{t.Fatal(e)}
- body,e:=io.ReadAll(io.LimitReader(client,8192));if e!=nil&&!strings.Contains(e.Error(),"closed pipe"){t.Fatal(e)}
+ res,e:=http.ReadResponse(bufio.NewReader(client),&http.Request{Method:"GET"})
+ if e!=nil{t.Fatal("HTTP tunneled response:",e)}
+ defer res.Body.Close()
+ body,e:=io.ReadAll(io.LimitReader(res.Body,8192))
+ if e!=nil{t.Fatal(e)}
  if !strings.Contains(string(body),"AFTAB-INTEGRATION-OK"){t.Fatalf("gateway returned wrong HTTP body: %q",string(body))}
  if s.userFor(token)==""{t.Fatal("test user was unexpectedly invalidated")}
 }
