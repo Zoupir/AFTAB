@@ -1,4 +1,4 @@
-name: Go checks and preview builds
+name: AFTAB tests and installable preview
 on:
   push:
   pull_request:
@@ -7,23 +7,55 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version: '1.23'
-      - name: Unit tests
-        run: go test -race ./...
+      - name: Format verification
+        run: |
+          test -z "$(gofmt -l ./cmd ./internal)"
+      - name: Unit and integration tests
+        run: go test -race -count=1 -timeout=90s ./...
       - name: Static analysis
         run: go vet ./...
       - name: Linux executable
-        run: CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -o dist/aftab-linux-amd64 ./cmd/aftab
-      - name: Windows executable
-        run: CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -o dist/aftab-windows-amd64.exe ./cmd/aftab
+        run: |
+          mkdir -p dist
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o dist/aftab-linux-amd64 ./cmd/aftab
+      - name: Windows graphical executable
+        run: CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o dist/aftab-windows-amd64.exe ./cmd/aftab
+      - name: Create Debian service package
+        run: |
+          set -eu
+          PKG="$RUNNER_TEMP/aftab-debroot"
+          mkdir -p "$PKG/DEBIAN" "$PKG/usr/bin" "$PKG/lib/systemd/system"
+          install -m 0755 dist/aftab-linux-amd64 "$PKG/usr/bin/aftab-server"
+          install -m 0644 packaging/aftab-server.service "$PKG/lib/systemd/system/aftab-server.service"
+          install -m 0644 packaging/debian-control "$PKG/DEBIAN/control"
+          cat > "$PKG/DEBIAN/postinst" <<'POSTINST'
+          #!/bin/sh
+          set -e
+          if command -v systemctl >/dev/null 2>&1; then
+            systemctl daemon-reload || true
+            systemctl enable aftab-server.service >/dev/null 2>&1 || true
+            systemctl restart aftab-server.service || true
+          fi
+          exit 0
+          POSTINST
+          chmod 0755 "$PKG/DEBIAN/postinst"
+          dpkg-deb --build "$PKG" dist/aftab-server-amd64.deb
+          dpkg-deb --info dist/aftab-server-amd64.deb
+      - name: Portable Windows package
+        run: zip -j dist/aftab-windows-portable.zip dist/aftab-windows-amd64.exe packaging/README-WINDOWS.txt
+      - name: Portable Linux package
+        run: tar -czf dist/aftab-linux-portable.tar.gz -C dist aftab-linux-amd64 -C packaging aftab-server.service
       - name: Checksum manifest
-        run: cd dist && sha256sum * > SHA256SUMS.txt
-      - uses: actions/upload-artifact@v4
+        run: cd dist && sha256sum aftab-linux-amd64 aftab-windows-amd64.exe aftab-server-amd64.deb aftab-windows-portable.zip aftab-linux-portable.tar.gz > SHA256SUMS.txt
+      - name: Upload Linux Windows and Debian artifacts
+        uses: actions/upload-artifact@v4
         with:
-          name: aftab-research-preview
+          name: aftab-installable-preview
           path: dist/
-          retention-days: 14
+          retention-days: 30
