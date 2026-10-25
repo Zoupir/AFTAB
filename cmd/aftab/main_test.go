@@ -1,6 +1,7 @@
 package main
 
 import (
+ "runtime"
  "encoding/hex"
  "os"
  "path/filepath"
@@ -34,7 +35,7 @@ func TestStorePersistsAndDisablesUser(t *testing.T){
  if e!=nil{t.Fatal(e)}
  if fresh.userFor(tok)!=""{t.Fatal("disabled user accepted")}
  info,e:=os.Stat(p);if e!=nil{t.Fatal(e)}
- if info.Mode().Perm()&0077!=0{t.Fatal("state file is accessible by other users")}
+ if runtime.GOOS!="windows"&&info.Mode().Perm()&0077!=0{t.Fatal("state file is accessible by other users")}
 }
 func TestExpiredAndExhaustedUsers(t *testing.T){
  s:=&store{db:database{Users:map[string]*User{}}}
