@@ -44,7 +44,7 @@ type User struct {
  Disabled bool `json:"disabled"`
 }
 type database struct {AdminToken string `json:"admin_token"`; Users map[string]*User `json:"users"`}
-type store struct {mu sync.Mutex; path string; db database}
+type store struct {mu sync.Mutex; path string; db database; pendingBytes int64; lastSave time.Time}
 func newToken() string {b:=make([]byte,32);if _,e:=rand.Read(b);e!=nil{panic(e)};return hex.EncodeToString(b)}
 func load(path string)(*store,error){
  s:=&store{path:path}
@@ -120,7 +120,7 @@ func serveGatewayManaged(ln net.Listener,s *store,public bool,tracked *gatewaySe
   }
   if e!=nil{event("warn","gateway","dial_failed","upstream_unreachable");_,_=c.Write([]byte{1});return};defer upstream.Close()
   _,_=c.Write([]byte{0});_ =c.SetDeadline(time.Time{})
-  relay(c,r,upstream,func(n int64){s.credit(id,n)})
+  relayAccounted(c,r,upstream,s,id)
  }()}
 }
 func relay(c net.Conn,r io.Reader,up net.Conn,account func(int64)){
