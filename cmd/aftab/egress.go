@@ -6,7 +6,6 @@ import (
  "net"
  "strconv"
  "strings"
- "time"
 )
 
 // Publicly reachable research gateways are not allowed to become an
