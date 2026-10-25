@@ -39,7 +39,10 @@ type Backend interface {
  CreateUser(name string, days int, gb int64)(string,error)
  DisableUser(name string) error
 }
+type GatewayStatus struct {Running bool; Listen, Fingerprint, LastError string}
+type GatewayController interface {Status() GatewayStatus; Start(port int) error; Test() error}
 type Config struct {
+ Gateway GatewayController
  CredentialsPath string
  DiagnosticsPath string
  Backend Backend
@@ -143,6 +146,8 @@ type page struct{
  Events []eventRow
  Total,Active int
  LogEnabled bool
+ Gateway GatewayStatus
+ TestResult string
 }
 func translate(lang,key string)string {
  if words,ok:=translations[lang];ok {if t,ok:=words[key];ok{return t}}
@@ -165,7 +170,7 @@ func(a *App) ServeHTTP(w http.ResponseWriter,r *http.Request){
   w.Header().Set("Content-Type","text/css; charset=utf-8");w.Header().Set("Cache-Control","public, max-age=3600");_,_=w.Write(b);return
  }
  path:=r.URL.Path
- allowed:=map[string]bool{"/":true,"/setup":true,"/login":true,"/logout":true,"/users":true,"/users/create":true,"/users/disable":true,"/diagnostics":true}
+ allowed:=map[string]bool{"/":true,"/setup":true,"/login":true,"/logout":true,"/users":true,"/users/create":true,"/users/disable":true,"/diagnostics":true,"/settings":true,"/settings/start":true,"/settings/test":true}
  if !allowed[path]{http.NotFound(w,r);return}
  isInstalled:=a.installed()
  if !isInstalled&&path!="/setup"{http.Redirect(w,r,"/setup",http.StatusSeeOther);return}
@@ -183,6 +188,7 @@ func(a *App) ServeHTTP(w http.ResponseWriter,r *http.Request){
  p:=page{Section:"home",Username:a.state.Username,CSRF:s.CSRF}
  if path=="/users"||path=="/users/create"||path=="/users/disable"{p.Section="users"}
  if path=="/diagnostics"{p.Section="diagnostics"}
+ if path=="/settings"||path=="/settings/start"||path=="/settings/test"{p.Section="settings"}
  if r.Method=="POST"{
   switch path{
   case "/users/create":
@@ -192,6 +198,11 @@ func(a *App) ServeHTTP(w http.ResponseWriter,r *http.Request){
     token,e:=a.config.Backend.CreateUser(name,days,gb)
     if e!=nil{p.Error=translate(lang,"createFailed")}else{p.CreatedToken=token;p.CreatedName=name;a.emit("user_created","ok")}
    }
+  case "/settings/start":
+   port,e:=strconv.Atoi(r.FormValue("port"))
+   if e!=nil||port<1024||port>65535||a.config.Gateway==nil{p.Error=translate(lang,"gatewayInvalid")}else if e=a.config.Gateway.Start(port);e!=nil{p.Error=translate(lang,"gatewayFailed")}else{p.Notice=translate(lang,"gatewayStarted");a.emit("gateway_start_requested","ok")}
+  case "/settings/test":
+   if a.config.Gateway==nil{p.Error=translate(lang,"gatewayFailed")}else if e:=a.config.Gateway.Test();e!=nil{p.Error=translate(lang,"gatewayTestFailed")}else{p.Notice=translate(lang,"gatewayTestOK");a.emit("gateway_self_test","ok")}
   case "/users/disable":
    if e:=a.config.Backend.DisableUser(r.FormValue("name"));e!=nil{p.Error=translate(lang,"disableFailed")}else{p.Notice=translate(lang,"disabled");a.emit("user_disabled","ok")}
   default:http.Error(w,"method not allowed",405);return
@@ -201,6 +212,7 @@ func(a *App) ServeHTTP(w http.ResponseWriter,r *http.Request){
  now:=time.Now()
  for _,u:=range p.Users{if !u.Disabled{expiry,e:=time.Parse(time.RFC3339,u.Expires);if e==nil&&now.Before(expiry)&&(u.QuotaBytes<=0||u.UsedBytes<u.QuotaBytes){p.Active++}}}
  if p.Section=="diagnostics"{p.Events=readEvents(a.config.DiagnosticsPath);p.LogEnabled=a.config.DiagnosticsPath!=""}
+ if a.config.Gateway!=nil{p.Gateway=a.config.Gateway.Status()}
  a.render(w,r,p)
 }
 var usernamePattern=regexp.MustCompile(`^[a-zA-Z0-9._-]{3,48}$`)
