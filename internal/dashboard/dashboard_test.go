@@ -96,3 +96,21 @@ func TestLocales(t *testing.T){
   if (lang=="fa"||lang=="ar")&&!strings.Contains(w.Body.String(),`dir="rtl"`){t.Fatalf("%s should be RTL",lang)}
  }
 }
+
+func TestPBKDF2SHA256KnownVectors(t *testing.T){
+ cases:=[]struct{rounds int;expected string}{
+  {1,"120fb6cffcf8b32c43e7225256c4f837a86548c92ccc35480805987cb70be17b"},
+  {2,"ae4d0c95af6b46d32d0adff928f06dd02a303f8ef3c251dfd6e2d85a95474c43"},
+ }
+ for _,tc:=range cases{
+  got:=hex.EncodeToString(derive("password",[]byte("salt"),tc.rounds))
+  if got!=tc.expected{t.Fatalf("PBKDF2 vector at %d rounds: %s",tc.rounds,got)}
+ }
+}
+func TestNoUnauthenticatedDashboardAccess(t *testing.T){
+ a,_:=newFixture(t);setupFixture(t,a)
+ for _,path:=range []string{"/","/users","/settings","/diagnostics"}{
+  w:=httptest.NewRecorder();a.ServeHTTP(w,request("GET","http://localhost"+path,""))
+  if w.Code!=http.StatusSeeOther||w.Header().Get("Location")!="/login"{t.Fatalf("unauthenticated %s allowed",path)}
+ }
+}
