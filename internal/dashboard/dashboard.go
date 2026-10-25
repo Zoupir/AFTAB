@@ -40,7 +40,7 @@ type Backend interface {
  DisableUser(name string) error
 }
 type GatewayStatus struct {Running, Public bool; Listen, Fingerprint, LastError string}
-type GatewayController interface {Status() GatewayStatus; Start(port int,public bool) error; Test() error}
+type GatewayController interface {Status() GatewayStatus; Start(port int,public bool) error; Stop() error; Test() error}
 type Config struct {
  Gateway GatewayController
  CredentialsPath string
@@ -175,7 +175,7 @@ func(a *App) ServeHTTP(w http.ResponseWriter,r *http.Request){
   w.Header().Set("Content-Type","text/css; charset=utf-8");w.Header().Set("Cache-Control","public, max-age=3600");_,_=w.Write(b);return
  }
  path:=r.URL.Path
- allowed:=map[string]bool{"/":true,"/setup":true,"/login":true,"/logout":true,"/users":true,"/users/create":true,"/users/disable":true,"/diagnostics":true,"/settings":true,"/settings/start":true,"/settings/test":true,"/account":true,"/account/password":true}
+ allowed:=map[string]bool{"/":true,"/setup":true,"/login":true,"/logout":true,"/users":true,"/users/create":true,"/users/disable":true,"/diagnostics":true,"/settings":true,"/settings/start":true,"/settings/stop":true,"/settings/test":true,"/account":true,"/account/password":true}
  if !allowed[path]{http.NotFound(w,r);return}
  isInstalled:=a.installed()
  if !isInstalled&&path!="/setup"{http.Redirect(w,r,"/setup",http.StatusSeeOther);return}
@@ -194,7 +194,7 @@ func(a *App) ServeHTTP(w http.ResponseWriter,r *http.Request){
  p:=page{Section:"home",Username:currentUsername,CSRF:s.CSRF}
  if path=="/users"||path=="/users/create"||path=="/users/disable"{p.Section="users"}
  if path=="/diagnostics"{p.Section="diagnostics"}
- if path=="/settings"||path=="/settings/start"||path=="/settings/test"{p.Section="settings"}
+ if path=="/settings"||path=="/settings/start"||path=="/settings/stop"||path=="/settings/test"{p.Section="settings"}
  if path=="/account"||path=="/account/password"{p.Section="account"}
  if r.Method=="POST"{
   switch path{
@@ -233,6 +233,8 @@ func(a *App) ServeHTTP(w http.ResponseWriter,r *http.Request){
   case "/settings/start":
    port,e:=strconv.Atoi(r.FormValue("port"))
    if e!=nil||port<1024||port>65535||a.config.Gateway==nil{p.Error=translate(lang,"gatewayInvalid")}else if e=a.config.Gateway.Start(port,r.FormValue("public")=="yes");e!=nil{p.Error=translate(lang,"gatewayFailed")}else{p.Notice=translate(lang,"gatewayStarted");a.emit("gateway_start_requested","ok")}
+  case "/settings/stop":
+   if a.config.Gateway==nil{p.Error=translate(lang,"gatewayFailed")}else if e:=a.config.Gateway.Stop();e!=nil{p.Error=translate(lang,"gatewayFailed")}else{p.Notice=translate(lang,"gatewayStopped");a.emit("gateway_stop_requested","ok")}
   case "/settings/test":
    if a.config.Gateway==nil{p.Error=translate(lang,"gatewayFailed")}else if e:=a.config.Gateway.Test();e!=nil{p.Error=translate(lang,"gatewayTestFailed")}else{p.Notice=translate(lang,"gatewayTestOK");a.emit("gateway_self_test","ok")}
   case "/users/disable":
