@@ -52,3 +52,11 @@ Start with `-log-level info -log-file ./data/aftab.jsonl`. Open **Diagnostics** 
 - Credentials have no graphical recovery or change-password screen yet.
 - Public multi-user hosting must wait for a reviewed HTTPS control plane, explicit trust boundaries, rate limits and threat modelling.
 - Linux and Windows builds are CI artifacts rather than signed installers; Android and desktop native VPN clients do not yet exist.
+
+## Change the administrator password
+
+Use **Administrator account** in the side menu. Enter your current password, a new password of at least 12 characters, and its confirmation. A successful change invalidates existing administrator sessions and redirects to sign-in.
+
+## Local-only recovery after a forgotten password
+
+There is deliberately **no publicly available reset link or secret default administrator password**. A legitimate system owner must stop AFTAB, securely back up and move aside the local `<db>.admin.json` credential file, and restart AFTAB to run first-time setup again. This requires trusted filesystem access; it cannot be done from an unauthenticated webpage. The user database remains separate from the credential file. Review local operating-system permissions before starting the wizard.
