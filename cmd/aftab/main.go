@@ -2,6 +2,7 @@ package main
 
 import (
  "bufio"
+ "context"
  "crypto/rand"
  "crypto/sha256"
  "crypto/subtle"
@@ -85,7 +86,10 @@ func gateway(addr,cert,key string,s *store)error{
  return serveGateway(ln,s)
 }
 func serveGateway(ln net.Listener,s *store)error{
- defer ln.Close();event("info","gateway","listener_started","ok")
+ return serveGatewayWithPolicy(ln,s,false)
+}
+func serveGatewayWithPolicy(ln net.Listener,s *store,public bool)error{
+ defer ln.Close();event("info","gateway","listener_started","ok","public",public)
  for{c,e:=ln.Accept();if e!=nil{return e};go func(){
   defer c.Close();_ =c.SetDeadline(time.Now().Add(15*time.Second))
   r:=bufio.NewReaderSize(c,512)
@@ -95,7 +99,14 @@ func serveGateway(ln net.Listener,s *store)error{
   pb:=make([]byte,2);if _,e=io.ReadFull(r,pb);e!=nil{return}
   port:=binary.BigEndian.Uint16(pb);if port==0||host==""{return}
   // Lab-only: arbitrary destination access; never expose publicly without ACLs.
-  upstream,e:=net.DialTimeout("tcp",net.JoinHostPort(host,strconv.Itoa(int(port))),10*time.Second)
+  var upstream net.Conn
+  if public {
+   ctx,cancel:=context.WithTimeout(context.Background(),7*time.Second)
+   upstream,e=remoteDestination(ctx,host,port)
+   cancel()
+  }else{
+   upstream,e=net.DialTimeout("tcp",net.JoinHostPort(host,strconv.Itoa(int(port))),10*time.Second)
+  }
   if e!=nil{event("warn","gateway","dial_failed","upstream_unreachable");_,_=c.Write([]byte{1});return};defer upstream.Close()
   _,_=c.Write([]byte{0});_ =c.SetDeadline(time.Time{})
   relay(c,r,upstream,func(n int64){s.credit(id,n)})
