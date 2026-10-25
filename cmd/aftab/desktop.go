@@ -13,7 +13,6 @@ import (
  "errors"
  "fmt"
  "html/template"
- "io"
  "net"
  "net/http"
  "os"
@@ -119,6 +118,9 @@ func(a *desktopApp) authorized(r *http.Request)bool{
  return len(cookie.Value)==len(expected)&&subtle.ConstantTimeCompare([]byte(cookie.Value),[]byte(expected))==1
 }
 func(a *desktopApp) view(w http.ResponseWriter,r *http.Request){
+  if lang:=r.URL.Query().Get("lang");lang=="fa"||lang=="en"||lang=="de"||lang=="ar"{
+   http.SetCookie(w,&http.Cookie{Name:"aftab_desktop_lang",Value:lang,Path:"/",SameSite:http.SameSiteStrictMode,MaxAge:31536000})
+  }
  a.mu.Lock()
  d:=desktopView{Lang:desktopLocale(r),Running:a.ln!=nil,Server:a.cfg.Server,Listen:a.cfg.Listen,Pin:a.cfg.Pin,HasToken:a.cfg.Token!="",CSRF:a.csrf,Message:a.msg,Error:a.errCode}
  a.mu.Unlock()
@@ -135,6 +137,8 @@ func(a *desktopApp) note(message,errorCode string){
 func(a *desktopApp) ServeHTTP(w http.ResponseWriter,r *http.Request){
  host,_,e:=net.SplitHostPort(r.RemoteAddr)
  if e!=nil||net.ParseIP(host)==nil||!net.ParseIP(host).IsLoopback(){http.Error(w,"local only",403);return}
+ requestHost,_,e:=net.SplitHostPort(r.Host)
+ if e!=nil||net.ParseIP(requestHost)==nil||!net.ParseIP(requestHost).IsLoopback(){http.Error(w,"invalid host",403);return}
  w.Header().Set("X-Content-Type-Options","nosniff")
  w.Header().Set("Referrer-Policy","no-referrer")
  w.Header().Set("X-Frame-Options","DENY")
