@@ -96,6 +96,32 @@ func TestDesktopSaveRequiresValidAuthenticatedForm(t *testing.T){
  if a.cfg.Server!="127.0.0.1:18443"{t.Fatal("config not updated")}
 }
 
+// Browser extensions, translation layers and proxy settings may rewrite
+// Origin. The session cookie + CSRF token protect this local-only controller.
+func TestDesktopSaveAllowsRewrittenOriginButStillRequiresCSRF(t *testing.T){
+ a:=desktopTestApp(t)
+ opened:=httptest.NewRecorder()
+ a.ServeHTTP(opened,desktopRequest("GET","/open?ticket="+a.secret,""))
+ cookie:=opened.Result().Cookies()[0]
+ vals:=url.Values{"server":{"127.0.0.1:18443"},"pin":{strings.Repeat("ab",32)},"token":{"0123456789abcdef0123456789abcdef"},"csrf":{a.csrf}}
+ for _,origin:=range []string{"http://localhost:19091","null","chrome-extension://example"} {
+  req:=desktopRequest("POST","/save",vals.Encode())
+  req.Header.Set("Origin",origin)
+  req.AddCookie(cookie)
+  rec:=httptest.NewRecorder()
+  a.ServeHTTP(rec,req)
+  if rec.Code!=http.StatusSeeOther{t.Fatalf("origin %q blocked: %d %s",origin,rec.Code,rec.Body.String())}
+ }
+ invalid:=vals
+ invalid.Set("csrf","wrong-csrf")
+ req:=desktopRequest("POST","/save",invalid.Encode())
+ req.Header.Set("Origin","https://evil.example")
+ req.AddCookie(cookie)
+ rec:=httptest.NewRecorder()
+ a.ServeHTTP(rec,req)
+ if rec.Code!=http.StatusForbidden{t.Fatal("invalid CSRF token was accepted")}
+}
+
 func TestDesktopDisconnectClosesTrackedSockets(t *testing.T){
  tracker:=newSOCKSTracker()
  a,b:=net.Pipe()
