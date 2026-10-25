@@ -132,7 +132,7 @@ func serveGatewayManaged(ln net.Listener,s *store,public bool,tracked *gatewaySe
   }
   if e!=nil{event("warn","gateway","dial_failed","upstream_unreachable");_,_=c.Write([]byte{1});return};defer upstream.Close()
   _,_=c.Write([]byte{0});_ =c.SetDeadline(time.Time{})
-  relayAccounted(c,r,upstream,s,id)
+  relay(c,r,upstream,func(n int64){s.credit(id,n)})
  }()}
 }
 func relay(c net.Conn,r io.Reader,up net.Conn,account func(int64)){
