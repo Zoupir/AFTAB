@@ -235,6 +235,13 @@ func main(){
  logLevel:=flag.String("log-level","info","debug, info, warn or error")
  logFile:=flag.String("log-file","","path to newline-delimited JSON diagnostic logs; default stderr")
  flag.Parse()
+ if *mode=="desktop"&&*logFile==""{
+  dir,e:=os.UserConfigDir()
+  if e!=nil||dir==""{log.Fatal("user configuration directory is unavailable")}
+  folder:=filepath.Join(dir,"AFTAB","logs")
+  if e:=os.MkdirAll(folder,0700);e!=nil{log.Fatal("could not create log directory: ",e)}
+  *logFile=filepath.Join(folder,"events.jsonl")
+ }
  var diagErr error
  diagnostics,diagErr=observability.New(*logLevel,*logFile)
  if diagErr!=nil { log.Fatal("diagnostics initialization failed: ",diagErr) }
@@ -261,7 +268,7 @@ func main(){
   if *config==""{*config=defaultDesktopConfig()}
   uiAddr:="127.0.0.1:19091"
   if *adminAddr!="127.0.0.1:19090"{uiAddr=*adminAddr}
-  if e:=startDesktop(*config,uiAddr);e!=nil{log.Fatal(e)}
+  if e:=startDesktop(*config,uiAddr,*logFile);e!=nil{log.Fatal(e)}
  case "client":
   if *config==""{log.Fatal("client needs -config")}
   var c clientConfig;b,e:=os.ReadFile(*config);if e!=nil{log.Fatal(e)}
