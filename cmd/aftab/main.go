@@ -80,6 +80,9 @@ func loopback(addr string)bool{h,_,e:=net.SplitHostPort(addr);if e!=nil{return f
 func gateway(addr,cert,key string,s *store)error{
  pair,e:=tls.LoadX509KeyPair(cert,key);if e!=nil{return e}
  ln,e:=tls.Listen("tcp",addr,&tls.Config{MinVersion:tls.VersionTLS13,Certificates:[]tls.Certificate{pair}});if e!=nil{return e}
+ return serveGateway(ln,s)
+}
+func serveGateway(ln net.Listener,s *store)error{
  defer ln.Close();event("info","gateway","listener_started","ok")
  for{c,e:=ln.Accept();if e!=nil{return e};go func(){
   defer c.Close();_ =c.SetDeadline(time.Now().Add(15*time.Second))
@@ -191,12 +194,17 @@ func main(){
  switch *mode{
  case "server":
   if *listen==""{*listen="127.0.0.1:18443"}
-  if *cert==""||*key==""{log.Fatal("missing TLS certificate or key")}
   if !loopback(*listen)||!loopback(*adminAddr){log.Fatal("research v1 only accepts loopback listeners")}
   s,e:=load(*db);if e!=nil{log.Fatal(e)}
-  panel,e:=newDashboard(*adminAddr,*db+".admin.json",*logFile,s);if e!=nil{log.Fatal("dashboard initialization failed: ",e)}
-  go func(){event("info","dashboard","listener_starting","ok");if e:=panel.ListenAndServe(*adminAddr);e!=nil{log.Print("dashboard stopped: ",e)}}()
-  log.Fatal(gateway(*listen,*cert,*key,s))
+  mgr:=newGatewayManager(s,*db)
+  panel,e:=newDashboard(*adminAddr,*db+".admin.json",*logFile,s,mgr);if e!=nil{log.Fatal("dashboard initialization failed: ",e)}
+  errCh:=make(chan error,1)
+  go func(){event("info","dashboard","listener_starting","ok");errCh<-panel.ListenAndServe(*adminAddr)}()
+  if *cert!=""||*key!=""{
+   if *cert==""||*key==""{log.Fatal("both cert and key are required")}
+   go func(){if e:=gateway(*listen,*cert,*key,s);e!=nil{event("error","gateway","listener_stopped","legacy_listener_error")}}()
+  }
+  log.Fatal(<-errCh)
  case "client":
   if *config==""{log.Fatal("client needs -config")}
   var c clientConfig;b,e:=os.ReadFile(*config);if e!=nil{log.Fatal(e)}
