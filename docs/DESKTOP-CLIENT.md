@@ -30,3 +30,22 @@
 The present research gateway **only binds to local loopback**, intentionally. Therefore it cannot yet accept direct clients across the public internet. Do not expose the gateway or control panel to the internet to work around this restriction. Local same-host tests and securely administered isolated lab transport tests are supported. An internet-facing, independently audited gateway design is future work.
 
 The release gate for public use remains: real Windows QA; reliable end-to-end reconnect and disconnect tests; private credential storage; completed transport threat model; IPv4/IPv6 policy; UDP/TUN handling; Android app; hardened remote administration; automatic upgrades and signed distributions.
+
+## Graphical browser proxy mode (implemented October 2026)
+
+The graphical client now starts **two** loopback listeners when connected:
+
+- SOCKS5: `127.0.0.1:10808`, for applications that support SOCKS5
+- HTTP proxy with HTTPS CONNECT: `127.0.0.1:10809`, for browsers and applications that support an HTTP system proxy
+
+On Windows, the **Automatically configure Windows browser proxy** checkbox is an explicit opt-in in the graphical Settings form. When enabled, Connect saves the existing Windows per-user WinINET proxy settings, starts both local listeners and sets the system HTTP/HTTPS proxy to `127.0.0.1:10809`. Disconnect restores the previous settings. A separate watchdog process monitors the client and restores the previous settings if the main application process exits unexpectedly. On the next startup, a leftover backup is also recovered.
+
+This mode makes AFTAB useful for compatible browser traffic without a manual proxy extension. **It does not create a VPN TUN/TAP adapter, does not route UDP, cannot capture applications ignoring system proxy settings and is not a system-wide VPN.**
+
+The client saves its own account token with Windows DPAPI under the invoking Windows user account. Do not share your token or copy the encrypted profile between Windows user accounts. Installer and binaries are currently unsigned previews, not security-audited releases.
+
+The graphical **Test gateway and account** action opens a server-originated test TCP connection to `example.com:443` and confirms the account was accepted. **Test TLS** checks only the gateway's pinned TLS certificate.
+
+### Server
+
+Use the Linux Debian package from the same successful build. On first run the administrator chooses username/password in the four-language panel. Gateway settings can be configured for either local testing or remote-client TCP service. The administration panel remains loopback-only for safety. The remote gateway requires the administrator to open the selected firewall port through their own hosting provider firewall.
