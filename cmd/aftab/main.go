@@ -116,7 +116,34 @@ func proxy(cfg clientConfig)error{
  ln,e:=net.Listen("tcp",cfg.Listen);if e!=nil{return e}
  return serveSOCKS(ln,cfg,pin)
 }
+type socksTracker struct {
+ mu sync.Mutex
+ active map[net.Conn]struct{}
+ closed bool
+}
+func newSOCKSTracker()*socksTracker{return &socksTracker{active:make(map[net.Conn]struct{})}}
+func(t *socksTracker) track(c net.Conn)bool{
+ if t==nil{return true}
+ t.mu.Lock();defer t.mu.Unlock()
+ if t.closed{return false}
+ t.active[c]=struct{}{}
+ return true
+}
+func(t *socksTracker) untrack(c net.Conn){
+ if t==nil{return}
+ t.mu.Lock();delete(t.active,c);t.mu.Unlock()
+}
+func(t *socksTracker) closeAll(){
+ if t==nil{return}
+ t.mu.Lock();t.closed=true
+ for c:=range t.active{_ =c.Close()}
+ t.active=map[net.Conn]struct{}{}
+ t.mu.Unlock()
+}
 func serveSOCKS(ln net.Listener,cfg clientConfig,pin []byte)error{
+ return serveSOCKSTracked(ln,cfg,pin,nil)
+}
+func serveSOCKSTracked(ln net.Listener,cfg clientConfig,pin []byte,tracker *socksTracker)error{
  defer ln.Close();event("info","client","listener_started","ok")
  for{
   c,e:=ln.Accept()
@@ -124,8 +151,10 @@ func serveSOCKS(ln net.Listener,cfg clientConfig,pin []byte)error{
    if errors.Is(e,net.ErrClosed){return nil}
    return e
   }
+  if !tracker.track(c){_ =c.Close();continue}
   go func(){
    defer c.Close()
+   defer tracker.untrack(c)
    if e:=socks(c,cfg,pin);e!=nil{event("warn","client","connection_failed","proxy_error")}
   }()
  }
