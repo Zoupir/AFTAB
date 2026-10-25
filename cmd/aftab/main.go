@@ -101,7 +101,8 @@ func serveGatewayManaged(ln net.Listener,s *store,public bool,tracked *gatewaySe
   if !tracked.add(c){_ =c.Close();continue}
   go func(){
    defer c.Close()
-   defer tracked.done(c)_ =c.SetDeadline(time.Now().Add(15*time.Second))
+   defer tracked.done(c)
+   _ =c.SetDeadline(time.Now().Add(15*time.Second))
   r:=bufio.NewReaderSize(c,512)
   tok,e:=r.ReadString('\n');if e!=nil||len(tok)>128{return}
   id:=s.userFor(strings.TrimSpace(tok));if id==""{event("warn","gateway","connection_rejected","unauthorized");return}
