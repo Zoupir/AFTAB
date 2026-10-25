@@ -1,0 +1,10 @@
+*.exe
+/aftab-linux-amd64
+/aftab-windows-amd64.exe
+*.key
+*.pem
+*.token
+*users*.json
+client.json
+.env
+.DS_Store
