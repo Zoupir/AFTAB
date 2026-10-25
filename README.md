@@ -37,3 +37,11 @@ AFTAB now includes a **multilingual graphical research control panel** (Persian,
 After signing in, the installer can create accounts, view structured diagnostic events, configure a loopback-only TLS gateway and run a local TLS handshake test. For screenshots, setup instructions and scope limitations, see [Graphical setup](docs/GUI-SETUP.md).
 
 **This is still an experimental TLS SOCKS proxy, not a production VPN.** Android, native VPN TUN, internet-facing provisioning, a hardened web control plane and anti-censorship claims are out of scope of the current build.
+
+## Windows graphical client preview
+
+The default mode on Windows is now `desktop`: double-click the GitHub Actions-built Windows executable to open the four-language graphical local controller. The interface supports configuration, a certificate-pinned TLS probe, Connect/Disconnect, and a local diagnostic event viewer.
+
+This runs a **local SOCKS5 TCP proxy** only. It does not create an OS VPN and cannot talk directly to the intentionally loopback-only lab gateway across the internet. See [desktop client and current restrictions](docs/DESKTOP-CLIENT.md).
+
+For server administration, use `-mode server` (on Windows or Linux), then the graphical first-run setup in [GUI setup](docs/GUI-SETUP.md). Server-side admin credentials are chosen by the installer and there is no default password.
