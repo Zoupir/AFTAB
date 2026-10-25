@@ -28,6 +28,7 @@ type gatewayManager struct{
  s *store
  directory, settingsPath string
  listener net.Listener
+ sessions *gatewaySessions
  public bool
  addr, fingerprint, lastError string
 }
@@ -53,9 +54,10 @@ func(g *gatewayManager) Start(port int,public bool)error{
  saved,_:=json.Marshal(struct{Port int `json:"port"`;Public bool `json:"public"`}{port,public})
  if e:=os.WriteFile(g.settingsPath+".tmp",saved,0600);e!=nil{_ =ln.Close();return e}
  if e:=os.Rename(g.settingsPath+".tmp",g.settingsPath);e!=nil{_ =ln.Close();return e}
- g.listener=ln;g.addr=addr;g.public=public;g.fingerprint=hex.EncodeToString(pin[:]);g.lastError=""
+ g.listener=ln;g.sessions=newGatewaySessions();g.addr=addr;g.public=public;g.fingerprint=hex.EncodeToString(pin[:]);g.lastError=""
+ activeSessions:=g.sessions
  go func(){
-  e:=serveGatewayWithPolicy(ln,g.s,public)
+  e:=serveGatewayManaged(ln,g.s,public,activeSessions)
   g.mu.Lock();if g.listener==ln{g.listener=nil}
   if e!=nil&&!errors.Is(e,net.ErrClosed){g.lastError="listener_error"}
   g.mu.Unlock()
@@ -66,9 +68,12 @@ func(g *gatewayManager) Start(port int,public bool)error{
 func(g *gatewayManager) Stop()error{
  g.mu.Lock()
  ln:=g.listener
+ tracked:=g.sessions
  g.listener=nil
+ g.sessions=nil
  g.mu.Unlock()
  if ln!=nil{_ =ln.Close()}
+ if tracked!=nil{tracked.shutdown()}
  if e:=os.Remove(g.settingsPath);e!=nil&&!errors.Is(e,os.ErrNotExist){return e}
  event("info","gateway","stopped_by_admin","ok")
  return nil
