@@ -136,6 +136,11 @@ func(a *desktopApp) start()error{
    _=ln.Close();_ =httpLn.Close()
    return e
   }
+  if e=startSystemProxyWatchdog(a.configFile);e!=nil{
+   _=recoverSystemProxy(a.configFile+".system-proxy-backup")
+   _=ln.Close();_ =httpLn.Close()
+   return errors.New("unable to activate proxy recovery watchdog")
+  }
   a.proxyApplied=true
  }
  a.ln=ln;a.httpLn=httpLn;a.httpServer=server;a.tracker=tracker
