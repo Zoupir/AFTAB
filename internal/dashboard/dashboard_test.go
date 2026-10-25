@@ -114,3 +114,24 @@ func TestNoUnauthenticatedDashboardAccess(t *testing.T){
   if w.Code!=http.StatusSeeOther||w.Header().Get("Location")!="/login"{t.Fatalf("unauthenticated %s allowed",path)}
  }
 }
+
+func TestPasswordChangeInvalidatesSessions(t *testing.T){
+ a,p:=newFixture(t);setupFixture(t,a)
+ page:=httptest.NewRecorder();a.ServeHTTP(page,request("GET","http://localhost/login",""))
+ nonce:=cookieNamed(page,"aftab_login");if nonce==nil{t.Fatal("missing login CSRF")}
+ credentials:=url.Values{"username":{"owner"},"password":{"correct-horse-battery-aftab"},"csrf":{nonce.Value}}
+ success:=httptest.NewRecorder();a.ServeHTTP(success,request("POST","http://localhost/login",credentials.Encode(),nonce))
+ sid:=cookieNamed(success,"aftab_sid");if sid==nil{t.Fatal("no session issued")}
+ a.mu.Lock();csrf:=a.sessions[shaKey(sid.Value)].CSRF;a.mu.Unlock()
+ change:=url.Values{"old_password":{"correct-horse-battery-aftab"},"new_password":{"new-password-for-aftab-2026"},"confirm":{"new-password-for-aftab-2026"},"csrf":{csrf}}
+ changed:=httptest.NewRecorder();a.ServeHTTP(changed,request("POST","http://localhost/account/password",change.Encode(),sid))
+ if changed.Code!=http.StatusSeeOther||changed.Header().Get("Location")!="/login"{t.Fatalf("password change failed: %d",changed.Code)}
+ if _,ok:=a.authenticated(request("GET","http://localhost/", "",sid));ok{t.Fatal("old session remained authorized")}
+ saved,e:=os.ReadFile(p);if e!=nil{t.Fatal(e)}
+ if strings.Contains(string(saved),"new-password-for-aftab-2026"){t.Fatal("changed password stored in plaintext")}
+ w:=httptest.NewRecorder();a.ServeHTTP(w,request("GET","http://localhost/login",""))
+ csrfCookie:=cookieNamed(w,"aftab_login")
+ newLogin:=url.Values{"username":{"owner"},"password":{"new-password-for-aftab-2026"},"csrf":{csrfCookie.Value}}
+ attempt:=httptest.NewRecorder();a.ServeHTTP(attempt,request("POST","http://localhost/login",newLogin.Encode(),csrfCookie))
+ if attempt.Code!=http.StatusSeeOther{t.Fatal("new password does not work")}
+}
