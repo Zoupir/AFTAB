@@ -1,6 +1,7 @@
 package main
 
 import (
+ "runtime"
  "crypto/sha256"
  "encoding/hex"
  "encoding/json"
@@ -52,7 +53,7 @@ func TestDesktopConfigRoundtripWithoutTokenExposure(t *testing.T){
  if e:=desktopConfigValid(c);e!=nil{t.Fatal(e)}
  if e:=a.persist(c);e!=nil{t.Fatal(e)}
  info,e:=os.Stat(a.configFile);if e!=nil{t.Fatal(e)}
- if info.Mode().Perm()&0077!=0{t.Fatal("desktop config is not private")}
+ if runtime.GOOS!="windows"&&info.Mode().Perm()&0077!=0{t.Fatal("desktop config is not private")}
  loaded,e:=newDesktop(a.configFile);if e!=nil{t.Fatal(e)}
  if loaded.cfg.Token!=c.Token{t.Fatal("saved token missing")}
  launch:=httptest.NewRecorder();loaded.ServeHTTP(launch,desktopRequest("GET","/open?ticket="+loaded.secret,""))
