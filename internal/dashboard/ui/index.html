@@ -118,9 +118,11 @@
    <form class="userForm" method="post" action="/settings/start">
     <input type="hidden" name="csrf" value="{{.CSRF}}">
     <label>{{tr "port"}}<input type="number" name="port" value="18443" min="1024" max="65535" required></label>
+    <label class="gatewayMode"><span>{{tr "remoteMode"}}</span><input type="checkbox" name="public" value="yes"></label>
     <button type="submit" class="primary">{{tr "startGateway"}}</button>
-   </form>
+   </form><p class="fine">{{tr "remoteWarning"}}</p>
    {{else}}
+   <p class="muted">{{if .Gateway.Public}}{{tr "remoteActive"}}{{else}}{{tr "localActive"}}{{end}}</p>
    <form method="post" action="/settings/test">
     <input type="hidden" name="csrf" value="{{.CSRF}}">
     <button type="submit" class="primary">{{tr "selfTest"}}</button>
