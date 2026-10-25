@@ -3,6 +3,10 @@ package dashboard
 // Translations are intentionally centralized so additional locales can be added safely.
 var translations = map[string]map[string]string{
 "en":{
+"remoteMode":"Allow client connections from the Internet (advanced)",
+"remoteWarning":"The gateway port becomes public. Open the matching firewall port only after reviewing security. Administration remains local.",
+"remoteActive":"Remote clients permitted",
+"localActive":"Local laboratory only",
 "account":"Administrator account",
 "changePassword":"Change administrator password",
 "oldPassword":"Current password",
@@ -84,6 +88,10 @@ var translations = map[string]map[string]string{
 "manage":"Manage access and diagnostics in one place.",
 },
 "fa":{
+"remoteMode":"پذیرش اتصال کلاینت‌ها از اینترنت (پیشرفته)",
+"remoteWarning":"پورت درگاه عمومی می‌شود. تنها پس از بررسی امنیتی پورت فایروال را باز کنید. پنل مدیریت محلی می‌ماند.",
+"remoteActive":"اتصال کلاینت‌های راه دور مجاز است",
+"localActive":"فقط آزمایش محلی",
 "account":"حساب مدیر",
 "changePassword":"تغییر رمز عبور مدیر",
 "oldPassword":"رمز عبور فعلی",
@@ -165,6 +173,10 @@ var translations = map[string]map[string]string{
 "manage":"مدیریت کاربران و خطاها در یک محیط.",
 },
 "de":{
+"remoteMode":"Clients aus dem Internet zulassen (erweitert)",
+"remoteWarning":"Gateway-Port wird öffentlich; Firewall nur nach Sicherheitsprüfung öffnen. Verwaltung bleibt lokal.",
+"remoteActive":"Remote-Clients erlaubt",
+"localActive":"Nur lokales Labor",
 "account":"Administratorkonto",
 "changePassword":"Administratorpasswort ändern",
 "oldPassword":"Aktuelles Passwort",
@@ -246,6 +258,10 @@ var translations = map[string]map[string]string{
 "manage":"Zugänge und Diagnosen zentral verwalten.",
 },
 "ar":{
+"remoteMode":"السماح باتصالات العملاء من الإنترنت (متقدم)",
+"remoteWarning":"سيصبح منفذ البوابة عاماً؛ افتح الجدار الناري بعد مراجعة الأمان. تبقى الإدارة محلية.",
+"remoteActive":"العملاء البعيدون مسموحون",
+"localActive":"مختبر محلي فقط",
 "account":"حساب المسؤول",
 "changePassword":"تغيير كلمة مرور المسؤول",
 "oldPassword":"كلمة المرور الحالية",
