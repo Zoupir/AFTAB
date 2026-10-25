@@ -58,7 +58,7 @@ func TestSOCKSThroughLocalPinnedGateway(t *testing.T){
  if connectReply[1]!=0{t.Fatalf("SOCKS CONNECT denied: %v",connectReply)}
  if _,e=io.WriteString(client,"GET / HTTP/1.1\r\nHost: "+destHost+"\r\nConnection: close\r\n\r\n");e!=nil{t.Fatal(e)}
  res,e:=http.ReadResponse(bufio.NewReader(client),&http.Request{Method:"GET"})
- if e!=nil{t.Fatal("HTTP tunneled response:",e)}
+ if e!=nil{s.mu.Lock();usage:=s.db.Users["integration"].UsedBytes;s.mu.Unlock();t.Fatalf("HTTP tunneled response: %v; metered_usage=%d",e,usage)}
  defer res.Body.Close()
  body,e:=io.ReadAll(io.LimitReader(res.Body,8192))
  if e!=nil{t.Fatal(e)}
