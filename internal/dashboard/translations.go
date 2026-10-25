@@ -3,6 +3,9 @@ package dashboard
 // Translations are intentionally centralized so additional locales can be added safely.
 var translations = map[string]map[string]string{
 "en":{
+"stopGateway":"Stop gateway",
+"gatewayStopped":"Gateway stopped; automatic startup disabled.",
+"startOnBoot":"Running gateways restart automatically when the AFTAB service starts.",
 "remoteMode":"Allow client connections from the Internet (advanced)",
 "remoteWarning":"The gateway port becomes public. Open the matching firewall port only after reviewing security. Administration remains local.",
 "remoteActive":"Remote clients permitted",
@@ -88,6 +91,9 @@ var translations = map[string]map[string]string{
 "manage":"Manage access and diagnostics in one place.",
 },
 "fa":{
+"stopGateway":"توقف درگاه",
+"gatewayStopped":"درگاه متوقف شد و راه‌اندازی خودکار غیرفعال شد.",
+"startOnBoot":"درگاه فعال پس از راه‌اندازی مجدد سرویس آفتاب خودکار اجرا می‌شود.",
 "remoteMode":"پذیرش اتصال کلاینت‌ها از اینترنت (پیشرفته)",
 "remoteWarning":"پورت درگاه عمومی می‌شود. تنها پس از بررسی امنیتی پورت فایروال را باز کنید. پنل مدیریت محلی می‌ماند.",
 "remoteActive":"اتصال کلاینت‌های راه دور مجاز است",
@@ -173,6 +179,9 @@ var translations = map[string]map[string]string{
 "manage":"مدیریت کاربران و خطاها در یک محیط.",
 },
 "de":{
+"stopGateway":"Gateway stoppen",
+"gatewayStopped":"Gateway gestoppt, Autostart deaktiviert.",
+"startOnBoot":"Ein laufendes Gateway wird nach einem Dienstneustart automatisch wieder gestartet.",
 "remoteMode":"Clients aus dem Internet zulassen (erweitert)",
 "remoteWarning":"Gateway-Port wird öffentlich; Firewall nur nach Sicherheitsprüfung öffnen. Verwaltung bleibt lokal.",
 "remoteActive":"Remote-Clients erlaubt",
@@ -258,6 +267,9 @@ var translations = map[string]map[string]string{
 "manage":"Zugänge und Diagnosen zentral verwalten.",
 },
 "ar":{
+"stopGateway":"إيقاف البوابة",
+"gatewayStopped":"تم إيقاف البوابة وتعطيل التشغيل التلقائي.",
+"startOnBoot":"سيعاد تشغيل البوابة النشطة تلقائياً مع خدمة آفتاب.",
 "remoteMode":"السماح باتصالات العملاء من الإنترنت (متقدم)",
 "remoteWarning":"سيصبح منفذ البوابة عاماً؛ افتح الجدار الناري بعد مراجعة الأمان. تبقى الإدارة محلية.",
 "remoteActive":"العملاء البعيدون مسموحون",
