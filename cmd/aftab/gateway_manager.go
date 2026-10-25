@@ -9,6 +9,7 @@ import (
  "crypto/tls"
  "crypto/x509"
  "encoding/hex"
+ "encoding/json"
  "encoding/pem"
  "errors"
  "math/big"
@@ -25,13 +26,13 @@ import (
 type gatewayManager struct{
  mu sync.Mutex
  s *store
- directory string
+ directory, settingsPath string
  listener net.Listener
  public bool
  addr, fingerprint, lastError string
 }
 func newGatewayManager(s *store,dbPath string)*gatewayManager{
- return &gatewayManager{s:s,directory:dbPath+".certs"}
+ return &gatewayManager{s:s,directory:dbPath+".certs",settingsPath:dbPath+".gateway.json"}
 }
 func (g *gatewayManager) Status()dashboard.GatewayStatus{
  g.mu.Lock();defer g.mu.Unlock()
@@ -49,15 +50,37 @@ func(g *gatewayManager) Start(port int,public bool)error{
  ln,e:=tls.Listen("tcp",addr,&tls.Config{MinVersion:tls.VersionTLS13,Certificates:[]tls.Certificate{pair}})
  if e!=nil{g.lastError="bind_error";return e}
  pin:=sha256.Sum256(pair.Certificate[0])
+ saved,_:=json.Marshal(struct{Port int `json:"port"`;Public bool `json:"public"`}{port,public})
+ if e:=os.WriteFile(g.settingsPath+".tmp",saved,0600);e!=nil{_ =ln.Close();return e}
+ if e:=os.Rename(g.settingsPath+".tmp",g.settingsPath);e!=nil{_ =ln.Close();return e}
  g.listener=ln;g.addr=addr;g.public=public;g.fingerprint=hex.EncodeToString(pin[:]);g.lastError=""
  go func(){
   e:=serveGatewayWithPolicy(ln,g.s,public)
-  g.mu.Lock();g.listener=nil
-  if e!=nil{g.lastError="listener_error"}
+  g.mu.Lock();if g.listener==ln{g.listener=nil}
+  if e!=nil&&!errors.Is(e,net.ErrClosed){g.lastError="listener_error"}
   g.mu.Unlock()
-  if e!=nil{event("error","gateway","listener_stopped","io_error")}
+  if e!=nil&&!errors.Is(e,net.ErrClosed){event("error","gateway","listener_stopped","io_error")}
  }()
  return nil
+}
+func(g *gatewayManager) Stop()error{
+ g.mu.Lock()
+ ln:=g.listener
+ g.listener=nil
+ g.mu.Unlock()
+ if ln!=nil{_ =ln.Close()}
+ if e:=os.Remove(g.settingsPath);e!=nil&&!errors.Is(e,os.ErrNotExist){return e}
+ event("info","gateway","stopped_by_admin","ok")
+ return nil
+}
+func(g *gatewayManager) Boot()error{
+ raw,e:=os.ReadFile(g.settingsPath)
+ if errors.Is(e,os.ErrNotExist){return nil}
+ if e!=nil{return e}
+ var saved struct{Port int `json:"port"`;Public bool `json:"public"`}
+ if e=json.Unmarshal(raw,&saved);e!=nil{return e}
+ if saved.Port==0{return errors.New("invalid saved gateway port")}
+ return g.Start(saved.Port,saved.Public)
 }
 func(g *gatewayManager) Test()error{
  info:=g.Status()
