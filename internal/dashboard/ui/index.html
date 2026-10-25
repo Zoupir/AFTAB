@@ -44,6 +44,7 @@
    <a href="/" {{if eq .Section "home"}}class="selected"{{end}}><span>◫</span>{{tr "dashboard"}}</a>
    <a href="/users" {{if eq .Section "users"}}class="selected"{{end}}><span>♧</span>{{tr "users"}}</a>
    <a href="/diagnostics" {{if eq .Section "diagnostics"}}class="selected"{{end}}><span>⌁</span>{{tr "diagnostics"}}</a>
+   <a href="/settings" {{if eq .Section "settings"}}class="selected"{{end}}><span>⚙</span>{{tr "settings"}}</a>
   </nav>
   <div class="sideFoot"><span class="statusDot"></span>{{tr "statusValue"}}<small>{{tr "warning"}}</small></div>
  </aside>
@@ -90,6 +91,29 @@
     <td>{{if not .Disabled}}<form method="post" action="/users/disable"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="name" value="{{.Name}}"><button class="quiet" type="submit">{{tr "disable"}}</button></form>{{end}}</td>
    </tr>{{end}}</tbody></table></div>
    {{else}}<p class="muted">{{tr "emptyUsers"}}</p>{{end}}
+  </div>
+  {{end}}
+  {{if eq .Section "settings"}}
+  <div class="eyebrow">AFTAB / GATEWAY</div><h1>{{tr "settings"}}</h1>
+  <div class="panel">
+   <h2>{{tr "gateway"}}</h2><p class="muted">{{tr "gatewayHelp"}}</p>
+   <div class="metrics">
+    <div class="metric"><span>{{tr "serverStatus"}}</span><strong class="statusText">{{if .Gateway.Running}}{{tr "running"}}{{else}}{{tr "stopped"}}{{end}}</strong></div>
+    <div class="metric"><span>{{tr "port"}}</span><strong class="statusText mono">{{if .Gateway.Listen}}{{.Gateway.Listen}}{{else}}127.0.0.1{{end}}</strong></div>
+   </div>
+   {{if not .Gateway.Running}}
+   <form class="userForm" method="post" action="/settings/start">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <label>{{tr "port"}}<input type="number" name="port" value="18443" min="1024" max="65535" required></label>
+    <button type="submit" class="primary">{{tr "startGateway"}}</button>
+   </form>
+   {{else}}
+   <form method="post" action="/settings/test">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <button type="submit" class="primary">{{tr "selfTest"}}</button>
+   </form>
+   <div class="fingerprint"><span>{{tr "fingerprint"}}</span><code class="oneTime">{{.Gateway.Fingerprint}}</code></div>
+   {{end}}
   </div>
   {{end}}
   {{if eq .Section "diagnostics"}}
