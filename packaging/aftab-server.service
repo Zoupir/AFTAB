@@ -1,0 +1,31 @@
+[Unit]
+Description=AFTAB research gateway and local graphical admin
+Documentation=https://github.com/Zoupir/AFTAB
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+DynamicUser=yes
+StateDirectory=aftab
+StateDirectoryMode=0700
+ExecStart=/usr/bin/aftab-server -mode server -db /var/lib/aftab/users.json -log-file /var/lib/aftab/events.jsonl -admin 127.0.0.1:19090
+Restart=on-failure
+RestartSec=3s
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target
