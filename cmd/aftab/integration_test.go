@@ -35,10 +35,14 @@ func TestSOCKSThroughLocalPinnedGateway(t *testing.T){
  cfg:=clientConfig{Server:g.Status().Listen,Listen:"127.0.0.1:10808",Token:token,Pin:g.Status().Fingerprint}
  if e=desktopProbe(cfg);e!=nil{t.Fatal("TLS pin probe failed:",e)}
  pin,_:=hex.DecodeString(cfg.Pin)
- server,client:=net.Pipe()
- defer server.Close();defer client.Close()
- go func(){_ =socks(server,cfg,pin)}()
- _=client.SetDeadline(time.Now().Add(6*time.Second))
+ proxyListener,e:=net.Listen("tcp","127.0.0.1:0")
+ if e!=nil{t.Fatal(e)}
+ defer proxyListener.Close()
+ go func(){_ =serveSOCKS(proxyListener,cfg,pin)}()
+ client,e:=net.DialTimeout("tcp",proxyListener.Addr().String(),2*time.Second)
+ if e!=nil{t.Fatal(e)}
+ defer client.Close()
+ _=client.SetDeadline(time.Now().Add(8*time.Second))
  if _,e=client.Write([]byte{5,1,0});e!=nil{t.Fatal(e)}
  response:=make([]byte,2)
  if _,e=io.ReadFull(client,response);e!=nil{t.Fatal(e)}
