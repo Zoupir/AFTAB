@@ -5,6 +5,7 @@ import (
  "encoding/hex"
  "encoding/json"
  "net/http"
+ "net"
  "net/http/httptest"
  "net/url"
  "os"
@@ -92,4 +93,14 @@ func TestDesktopSaveRequiresValidAuthenticatedForm(t *testing.T){
  ok:=httptest.NewRecorder();a.ServeHTTP(ok,r)
  if ok.Code!=http.StatusSeeOther{t.Fatalf("save failed: %d",ok.Code)}
  if a.cfg.Server!="127.0.0.1:18443"{t.Fatal("config not updated")}
+}
+
+func TestDesktopDisconnectClosesTrackedSockets(t *testing.T){
+ tracker:=newSOCKSTracker()
+ a,b:=net.Pipe()
+ defer b.Close()
+ if !tracker.track(a){t.Fatal("tracker refused initial connection")}
+ tracker.closeAll()
+ if _,e:=a.Write([]byte("x"));e==nil{t.Fatal("tracked connection not closed")}
+ if tracker.track(b){t.Fatal("tracker accepted a socket after shutdown")}
 }
