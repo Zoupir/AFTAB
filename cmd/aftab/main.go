@@ -107,18 +107,27 @@ func serveGatewayManaged(ln net.Listener,s *store,public bool,tracked *gatewaySe
  defer ln.Close()
  defer tracked.shutdown()
  event("info","gateway","listener_started","ok","public",public)
+ slots:=make(chan struct{},128)
  for{
   c,e:=ln.Accept()
   if e!=nil{return e}
-  if !tracked.add(c){_ =c.Close();continue}
+  select{
+   case slots<-struct{}{}:
+   default:
+    _=c.Close()
+    event("warn","gateway","connection_rejected","capacity_exhausted")
+    continue
+  }
+  if !tracked.add(c){<-slots;_ =c.Close();continue}
   go func(){
    defer c.Close()
    defer tracked.done(c)
+   defer func(){<-slots}()
    _ =c.SetDeadline(time.Now().Add(15*time.Second))
   r:=bufio.NewReaderSize(c,512)
-  tok,e:=r.ReadString('\n');if e!=nil||len(tok)>128{return}
+  tokBytes,e:=r.ReadSlice('\n');if e!=nil||len(tokBytes)>128{return};tok:=string(tokBytes)
   id:=s.userFor(strings.TrimSpace(tok));if id==""{event("warn","gateway","connection_rejected","unauthorized");return}
-  host,e:=r.ReadString('\n');if e!=nil||len(host)>260{return};host=strings.TrimSpace(host)
+  hostBytes,e:=r.ReadSlice('\n');if e!=nil||len(hostBytes)>260{return};host:=strings.TrimSpace(string(hostBytes))
   pb:=make([]byte,2);if _,e=io.ReadFull(r,pb);e!=nil{return}
   port:=binary.BigEndian.Uint16(pb);if port==0||host==""{return}
   // Lab-only: arbitrary destination access; never expose publicly without ACLs.
