@@ -18,6 +18,8 @@ import (
  "net"
  "net/http"
  "os"
+ "os/exec"
+ "runtime"
  "path/filepath"
  "strconv"
  "strings"
@@ -200,6 +202,9 @@ func main(){
   panel,e:=newDashboard(*adminAddr,*db+".admin.json",*logFile,s,mgr);if e!=nil{log.Fatal("dashboard initialization failed: ",e)}
   errCh:=make(chan error,1)
   go func(){event("info","dashboard","listener_starting","ok");errCh<-panel.ListenAndServe(*adminAddr)}()
+  if runtime.GOOS=="windows"&&*adminAddr=="127.0.0.1:19090"{
+   go func(){time.Sleep(700*time.Millisecond);_ =exec.Command("rundll32.exe","url.dll,FileProtocolHandler","http://127.0.0.1:19090").Start()}()
+  }
   if *cert!=""||*key!=""{
    if *cert==""||*key==""{log.Fatal("both cert and key are required")}
    go func(){if e:=gateway(*listen,*cert,*key,s);e!=nil{event("error","gateway","listener_stopped","legacy_listener_error")}}()
