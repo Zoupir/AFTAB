@@ -45,6 +45,7 @@
    <a href="/users" {{if eq .Section "users"}}class="selected"{{end}}><span>♧</span>{{tr "users"}}</a>
    <a href="/diagnostics" {{if eq .Section "diagnostics"}}class="selected"{{end}}><span>⌁</span>{{tr "diagnostics"}}</a>
    <a href="/settings" {{if eq .Section "settings"}}class="selected"{{end}}><span>⚙</span>{{tr "settings"}}</a>
+   <a href="/account" {{if eq .Section "account"}}class="selected"{{end}}><span>♙</span>{{tr "account"}}</a>
   </nav>
   <div class="sideFoot"><span class="statusDot"></span>{{tr "statusValue"}}<small>{{tr "warning"}}</small></div>
  </aside>
@@ -91,6 +92,18 @@
     <td>{{if not .Disabled}}<form method="post" action="/users/disable"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="name" value="{{.Name}}"><button class="quiet" type="submit">{{tr "disable"}}</button></form>{{end}}</td>
    </tr>{{end}}</tbody></table></div>
    {{else}}<p class="muted">{{tr "emptyUsers"}}</p>{{end}}
+  </div>
+  {{end}}
+  {{if eq .Section "account"}}
+  <div class="eyebrow">AFTAB / ADMINISTRATOR</div><h1>{{tr "account"}}</h1>
+  <div class="panel"><h2>{{tr "changePassword"}}</h2><p class="muted">{{tr "passwordHelp"}}</p>
+   <form class="accountForm" method="post" action="/account/password">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <label>{{tr "oldPassword"}}<input type="password" name="old_password" autocomplete="current-password" required></label>
+    <label>{{tr "newPassword"}}<input type="password" name="new_password" autocomplete="new-password" minlength="12" maxlength="128" required></label>
+    <label>{{tr "confirm"}}<input type="password" name="confirm" autocomplete="new-password" minlength="12" maxlength="128" required></label>
+    <button type="submit" class="primary">{{tr "savePassword"}}</button>
+   </form>
   </div>
   {{end}}
   {{if eq .Section "settings"}}
