@@ -27,6 +27,7 @@ type gatewayManager struct{
  s *store
  directory string
  listener net.Listener
+ public bool
  addr, fingerprint, lastError string
 }
 func newGatewayManager(s *store,dbPath string)*gatewayManager{
@@ -34,21 +35,23 @@ func newGatewayManager(s *store,dbPath string)*gatewayManager{
 }
 func (g *gatewayManager) Status()dashboard.GatewayStatus{
  g.mu.Lock();defer g.mu.Unlock()
- return dashboard.GatewayStatus{Running:g.listener!=nil,Listen:g.addr,Fingerprint:g.fingerprint,LastError:g.lastError}
+ return dashboard.GatewayStatus{Running:g.listener!=nil,Public:g.public,Listen:g.addr,Fingerprint:g.fingerprint,LastError:g.lastError}
 }
-func(g *gatewayManager) Start(port int)error{
+func(g *gatewayManager) Start(port int,public bool)error{
  if port<1024||port>65535{return errors.New("port out of lab range")}
  g.mu.Lock();defer g.mu.Unlock()
  if g.listener!=nil{return errors.New("gateway already running")}
  cert,key,e:=g.certificates();if e!=nil{g.lastError="certificate_error";return e}
  pair,e:=tls.LoadX509KeyPair(cert,key);if e!=nil{g.lastError="tls_certificate_error";return e}
- addr:=net.JoinHostPort("127.0.0.1",strconv.Itoa(port))
+ host:="127.0.0.1"
+ if public{host="0.0.0.0"}
+ addr:=net.JoinHostPort(host,strconv.Itoa(port))
  ln,e:=tls.Listen("tcp",addr,&tls.Config{MinVersion:tls.VersionTLS13,Certificates:[]tls.Certificate{pair}})
  if e!=nil{g.lastError="bind_error";return e}
  pin:=sha256.Sum256(pair.Certificate[0])
- g.listener=ln;g.addr=addr;g.fingerprint=hex.EncodeToString(pin[:]);g.lastError=""
+ g.listener=ln;g.addr=addr;g.public=public;g.fingerprint=hex.EncodeToString(pin[:]);g.lastError=""
  go func(){
-  e:=serveGateway(ln,g.s)
+  e:=serveGatewayWithPolicy(ln,g.s,public)
   g.mu.Lock();g.listener=nil
   if e!=nil{g.lastError="listener_error"}
   g.mu.Unlock()
@@ -66,10 +69,13 @@ func(g *gatewayManager) Test()error{
   return nil
  }}
  dialer:=&net.Dialer{Timeout:3*time.Second}
- c,e:=tls.DialWithDialer(dialer,"tcp",info.Listen,config)
+ testAddr:=info.Listen
+ if info.Public {testAddr=net.JoinHostPort("127.0.0.1",strconv.Itoa(mustPort(info.Listen)))}
+ c,e:=tls.DialWithDialer(dialer,"tcp",testAddr,config)
  if e!=nil{return e}
  return c.Close()
 }
+func mustPort(addr string)int{_,p,_:=net.SplitHostPort(addr);n,_:=strconv.Atoi(p);return n}
 func(g *gatewayManager)certificates()(string,string,error){
  if e:=os.MkdirAll(g.directory,0700);e!=nil{return "","",e}
  certPath:=filepath.Join(g.directory,"gateway.crt")
