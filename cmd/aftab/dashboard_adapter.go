@@ -20,7 +20,7 @@ func(b accountBackend) CreateUser(name string,days int,gb int64)(string,error){
  b.s.mu.Lock();defer b.s.mu.Unlock()
  if _,ok:=b.s.db.Users[name];ok{return "",errors.New("duplicate account")}
  token:=newToken()
- b.s.db.Users[name]=&User{Name:name,Token:token,Expires:time.Now().Add(time.Duration(days)*24*time.Hour).UTC().Format(time.RFC3339),QuotaBytes:gb*1073741824}
+ b.s.db.Users[name]=&User{Name:name,Token:tokenDigest(token),Expires:time.Now().Add(time.Duration(days)*24*time.Hour).UTC().Format(time.RFC3339),QuotaBytes:gb*1073741824}
  if e:=b.s.save();e!=nil{delete(b.s.db.Users,name);return "",e}
  return token,nil
 }
