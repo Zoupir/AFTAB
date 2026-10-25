@@ -1,0 +1,9 @@
+Package: aftab-server
+Version: 0.3.0~preview1
+Section: net
+Priority: optional
+Architecture: amd64
+Maintainer: AFTAB Research <aftab@example.invalid>
+Description: AFTAB experimental TLS gateway and graphical local management
+ Independent SOCKS/TLS research gateway with local browser-based first-run
+ administration. Not a production-ready VPN.
