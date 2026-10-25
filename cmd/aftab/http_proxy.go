@@ -96,14 +96,16 @@ func (p *localHTTPProxy) ServeHTTP(w http.ResponseWriter,r *http.Request){
  w.WriteHeader(resp.StatusCode)
  _,_=io.Copy(w,io.LimitReader(resp.Body,32*1024*1024))
 }
-func serveLocalHTTPProxy(ln net.Listener,cfg clientConfig,tracker *socksTracker)error{
+func newLocalHTTPProxyServer(cfg clientConfig,tracker *socksTracker)*http.Server{
  handler:=&localHTTPProxy{cfg:cfg,tracked:tracker}
- server:=&http.Server{
+ return &http.Server{
   Handler:handler,
   ReadHeaderTimeout:5*time.Second,
   IdleTimeout:30*time.Second,
   MaxHeaderBytes:8192,
  }
+}
+func serveLocalHTTPProxy(ln net.Listener,server *http.Server)error{
  e:=server.Serve(ln)
  if errors.Is(e,http.ErrServerClosed)||errors.Is(e,net.ErrClosed){return nil}
  return e
