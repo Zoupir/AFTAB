@@ -47,10 +47,9 @@ func load(path string)(*store,error){
  s:=&store{path:path}
  b,e:=os.ReadFile(path)
  if errors.Is(e,os.ErrNotExist){
-  s.db=database{AdminToken:newToken(),Users:map[string]*User{}}
+  s.db=database{Users:map[string]*User{}}
   if e=os.MkdirAll(filepath.Dir(path),0700);e!=nil{return nil,e}
   if e=s.save();e!=nil{return nil,e}
-  fmt.Println("FIRST-RUN ADMIN TOKEN (store privately):",s.db.AdminToken)
   return s,nil
  }
  if e!=nil{return nil,e}
@@ -195,7 +194,8 @@ func main(){
   if *cert==""||*key==""{log.Fatal("missing TLS certificate or key")}
   if !loopback(*listen)||!loopback(*adminAddr){log.Fatal("research v1 only accepts loopback listeners")}
   s,e:=load(*db);if e!=nil{log.Fatal(e)}
-  go func(){if e:=admin(*adminAddr,s);e!=nil{log.Print(e)}}()
+  panel,e:=newDashboard(*adminAddr,*db+".admin.json",*logFile,s);if e!=nil{log.Fatal("dashboard initialization failed: ",e)}
+  go func(){event("info","dashboard","listener_starting","ok");if e:=panel.ListenAndServe(*adminAddr);e!=nil{log.Print("dashboard stopped: ",e)}}()
   log.Fatal(gateway(*listen,*cert,*key,s))
  case "client":
   if *config==""{log.Fatal("client needs -config")}
