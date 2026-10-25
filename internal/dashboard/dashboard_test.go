@@ -1,6 +1,7 @@
 package dashboard
 
 import (
+ "runtime"
  "crypto/sha256"
  "encoding/hex"
  "encoding/json"
@@ -60,7 +61,7 @@ func TestFirstRunWizardAndPasswordStorage(t *testing.T){
  if e=json.Unmarshal(data,&creds);e!=nil{t.Fatal(e)}
  if creds.Username!="owner"||creds.Language!="fa"||len(creds.Hash)!=64{t.Fatal("incorrect saved credentials")}
  stat,e:=os.Stat(p);if e!=nil{t.Fatal(e)}
- if stat.Mode().Perm()&0077!=0{t.Fatal("credentials readable by other users")}
+ if runtime.GOOS!="windows"&&stat.Mode().Perm()&0077!=0{t.Fatal("credentials readable by other users")}
  a2,e:=New(a.config);if e!=nil{t.Fatal(e)}
  if !a2.installed(){t.Fatal("setup lost after restart")}
  w2:=httptest.NewRecorder();a2.ServeHTTP(w2,request("GET","http://localhost/setup",""))
