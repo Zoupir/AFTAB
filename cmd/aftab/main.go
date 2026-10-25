@@ -141,7 +141,7 @@ func relay(c net.Conn,r io.Reader,up net.Conn,account func(int64)){
  go func(){defer wg.Done();n,_:=io.Copy(c,up);account(n);if x,ok:=c.(interface{CloseWrite()error});ok{_ =x.CloseWrite()}}()
  wg.Wait()
 }
-type clientConfig struct {Server string `json:"server"`; Listen string `json:"listen"`; Token string `json:"token"`; Pin string `json:"pin"`}
+type clientConfig struct {Server string `json:"server"`; Listen string `json:"listen"`; Token string `json:"token"`; Pin string `json:"pin"`; UseSystemProxy bool `json:"system_proxy"`}
 func proxy(cfg clientConfig)error{
  if cfg.Listen==""{cfg.Listen="127.0.0.1:10808"}
  if !loopback(cfg.Listen){return errors.New("SOCKS listener must be loopback")}
