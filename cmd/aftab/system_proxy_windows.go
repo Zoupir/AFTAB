@@ -8,6 +8,7 @@ import (
  "fmt"
  "os"
  "os/exec"
+ "strconv"
  "strings"
  "syscall"
 )
@@ -83,4 +84,27 @@ func applySystemProxy(restorePath string)error{
  }
  announceProxyChange()
  return nil
+}
+
+func startSystemProxyWatchdog(configFile string)error{
+ executable,e:=os.Executable()
+ if e!=nil{return e}
+ cmd:=exec.Command(executable,"-mode=proxy-watchdog","-watch-pid",strconv.Itoa(os.Getpid()),"-config",configFile)
+ cmd.SysProcAttr=&syscall.SysProcAttr{HideWindow:true}
+ if e:=cmd.Start();e!=nil{return e}
+ return cmd.Process.Release()
+}
+func runSystemProxyWatchdog(pid int,restorePath string)error{
+ if pid<=0{return errors.New("invalid watchdog process")}
+ open:=kernel32.NewProc("OpenProcess")
+ wait:=kernel32.NewProc("WaitForSingleObject")
+ closeHandle:=kernel32.NewProc("CloseHandle")
+ h,_,_:=open.Call(uintptr(0x00100000),0,uintptr(pid))
+ if h!=0{
+  wait.Call(h,uintptr(0xFFFFFFFF))
+  closeHandle.Call(h)
+ }
+ // If the parent terminates without a clean disconnect, restore the exact
+ // proxy settings recorded before activation.
+ return recoverSystemProxy(restorePath)
 }
