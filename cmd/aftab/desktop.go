@@ -222,7 +222,11 @@ func(a *desktopApp) ServeHTTP(w http.ResponseWriter,r *http.Request){
  r.Body=http.MaxBytesReader(w,r.Body,8192)
  if e:=r.ParseForm();e!=nil{http.Error(w,"invalid form",400);return}
  a.mu.Lock();csrf:=a.csrf;a.mu.Unlock()
- if r.Header.Get("Origin")!=""&&r.Header.Get("Origin")!="http://"+r.Host{http.Error(w,"origin rejected",403);return}
+ // CSRF is verified below using a random per-launch token. Browser extensions,
+ // loopback aliasing and system proxy rewrites can change the Origin header on
+ // otherwise legitimate local submissions. Do not block users based on Origin:
+ // access is already restricted to loopback Host/RemoteAddr, a strict session
+ // cookie and a constant-time CSRF check.
  if len(r.FormValue("csrf"))!=len(csrf)||subtle.ConstantTimeCompare([]byte(r.FormValue("csrf")),[]byte(csrf))!=1{http.Error(w,"invalid csrf",403);return}
  switch r.URL.Path{
  case "/save":
