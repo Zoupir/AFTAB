@@ -25,3 +25,6 @@ Never commit credentials, private keys, tokens, client configuration with secret
 Use independently reviewed cryptography. Treat a new transport/framing design as a falsifiable hypothesis; benchmark against existing methods, including failure conditions, before claiming novelty.
 
 See [research plan](docs/RESEARCH.md) and [security scope](SECURITY.md).
+
+## Diagnostics
+Structured JSON event logging is implemented for process startup, gateway and SOCKS failures and the local administrator API. See [diagnostics and troubleshooting](docs/DIAGNOSTICS.md). Privacy-sensitive fields are intentionally excluded. This is experimental diagnostics, not a complete security audit log.
