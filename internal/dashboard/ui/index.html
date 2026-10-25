@@ -127,8 +127,13 @@
     <input type="hidden" name="csrf" value="{{.CSRF}}">
     <button type="submit" class="primary">{{tr "selfTest"}}</button>
    </form>
+   <form method="post" action="/settings/stop">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <button type="submit" class="quiet">{{tr "stopGateway"}}</button>
+   </form>
    <div class="fingerprint"><span>{{tr "fingerprint"}}</span><code class="oneTime">{{.Gateway.Fingerprint}}</code></div>
    {{end}}
+   <p class="fine">{{tr "startOnBoot"}}</p>
   </div>
   {{end}}
   {{if eq .Section "diagnostics"}}
