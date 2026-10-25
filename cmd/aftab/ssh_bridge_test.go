@@ -78,7 +78,7 @@ func TestBuiltInSSHBridgeAndHostKeyPinning(t *testing.T) {
  _,gatewayPortStr,_:=net.SplitHostPort(target.Addr().String())
  gatewayPort,_:=strconv.Atoi(gatewayPortStr)
  trust:=filepath.Join(home,".ssh","known_hosts")
- if e:=os.WriteFile(trust,[]byte(knownhosts.Line(knownhosts.Normalize(sshServer.Addr().String()),signer.PublicKey())+"\n"),0600);e!=nil{t.Fatal(e)}
+ if e:=os.WriteFile(trust,[]byte(knownhosts.Line([]string{knownhosts.Normalize(sshServer.Addr().String())},signer.PublicKey())+"\n"),0600);e!=nil{t.Fatal(e)}
  c:=clientConfig{SSHHost:host,SSHUser:"testuser",SSHPassword:"correct-password",SSHPort:sshPort,GatewayPort:gatewayPort}
  bridge,e:=startSSHBridge(c)
  if e!=nil{t.Fatalf("native verified SSH bootstrap failed: %v",e)}
@@ -95,6 +95,6 @@ func TestBuiltInSSHBridgeAndHostKeyPinning(t *testing.T) {
  // An incorrect known_hosts entry must never silently authenticate.
  _,otherPrivate,_:=ed25519.GenerateKey(rand.Reader)
  otherSigner,_:=ssh.NewSignerFromKey(otherPrivate)
- if e:=os.WriteFile(trust,[]byte(knownhosts.Line(knownhosts.Normalize(sshServer.Addr().String()),otherSigner.PublicKey())+"\n"),0600);e!=nil{t.Fatal(e)}
+ if e:=os.WriteFile(trust,[]byte(knownhosts.Line([]string{knownhosts.Normalize(sshServer.Addr().String())},otherSigner.PublicKey())+"\n"),0600);e!=nil{t.Fatal(e)}
  if _,e=dialVerifiedSSH(c);e==nil{t.Fatal("SSH host-key mismatch accepted")}
 }
