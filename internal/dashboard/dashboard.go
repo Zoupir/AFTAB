@@ -175,7 +175,7 @@ func(a *App) ServeHTTP(w http.ResponseWriter,r *http.Request){
   w.Header().Set("Content-Type","text/css; charset=utf-8");w.Header().Set("Cache-Control","public, max-age=3600");_,_=w.Write(b);return
  }
  path:=r.URL.Path
- allowed:=map[string]bool{"/":true,"/setup":true,"/login":true,"/logout":true,"/users":true,"/users/create":true,"/users/disable":true,"/diagnostics":true,"/settings":true,"/settings/start":true,"/settings/test":true}
+ allowed:=map[string]bool{"/":true,"/setup":true,"/login":true,"/logout":true,"/users":true,"/users/create":true,"/users/disable":true,"/diagnostics":true,"/settings":true,"/settings/start":true,"/settings/test":true,"/account":true,"/account/password":true}
  if !allowed[path]{http.NotFound(w,r);return}
  isInstalled:=a.installed()
  if !isInstalled&&path!="/setup"{http.Redirect(w,r,"/setup",http.StatusSeeOther);return}
@@ -195,6 +195,7 @@ func(a *App) ServeHTTP(w http.ResponseWriter,r *http.Request){
  if path=="/users"||path=="/users/create"||path=="/users/disable"{p.Section="users"}
  if path=="/diagnostics"{p.Section="diagnostics"}
  if path=="/settings"||path=="/settings/start"||path=="/settings/test"{p.Section="settings"}
+ if path=="/account"||path=="/account/password"{p.Section="account"}
  if r.Method=="POST"{
   switch path{
   case "/users/create":
@@ -203,6 +204,31 @@ func(a *App) ServeHTTP(w http.ResponseWriter,r *http.Request){
    if !validUser(name)||e1!=nil||e2!=nil||days<1||days>3650||gb<1||gb>100000 {p.Error=translate(lang,"invalidUser")}else{
     token,e:=a.config.Backend.CreateUser(name,days,gb)
     if e!=nil{p.Error=translate(lang,"createFailed")}else{p.CreatedToken=token;p.CreatedName=name;a.emit("user_created","ok")}
+   }
+  case "/account/password":
+   oldPassword:=r.FormValue("old_password")
+   newPassword:=r.FormValue("new_password")
+   repeat:=r.FormValue("confirm")
+   if len([]rune(newPassword))<12||len([]rune(newPassword))>128||newPassword!=repeat{
+    p.Error=translate(lang,"passwordInvalid")
+   }else{
+    a.mu.Lock();state:=a.state;a.mu.Unlock()
+    salt,e:=hex.DecodeString(state.Salt);if e!=nil{p.Error=translate(lang,"passwordFailed")}else{
+     actual,_:=hex.DecodeString(state.Hash)
+     guess:=derive(oldPassword,salt,state.Iterations)
+     if subtle.ConstantTimeCompare(guess,actual)!=1{p.Error=translate(lang,"passwordWrong")}else{
+      nextSalt:=randomHex(16);newRaw,_:=hex.DecodeString(nextSalt)
+      nextHash:=hex.EncodeToString(derive(newPassword,newRaw,600000))
+      a.mu.Lock();oldState:=a.state
+      a.state.Salt=nextSalt;a.state.Hash=nextHash;a.state.Iterations=600000
+      e=a.saveLocked()
+      if e!=nil{a.state=oldState}else{a.sessions=make(map[string]session)}
+      a.mu.Unlock()
+      if e!=nil{p.Error=translate(lang,"passwordFailed")}else{
+       a.emit("password_changed","ok");a.revoke(w,r);http.Redirect(w,r,"/login",http.StatusSeeOther);return
+      }
+     }
+    }
    }
   case "/settings/start":
    port,e:=strconv.Atoi(r.FormValue("port"))
