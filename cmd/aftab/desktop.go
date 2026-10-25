@@ -37,6 +37,7 @@ type desktopApp struct {
  httpServer *http.Server
  proxyApplied bool
  tracker *socksTracker
+ bridge *sshBridge
  secret, session, csrf string
  bootUsed bool
  msg, errCode string
@@ -50,12 +51,19 @@ func defaultDesktopConfig()string{
 func newDesktop(configFile string)(*desktopApp,error){
  a:=&desktopApp{configFile:configFile,secret:desktopRandom(),session:desktopRandom(),csrf:desktopRandom()}
  a.cfg.Listen="127.0.0.1:10808"
+ a.cfg.SSHPort=22
+ a.cfg.GatewayPort=18443
+ a.cfg.UseSystemProxy=runtime.GOOS=="windows"
  b,e:=os.ReadFile(configFile)
  if errors.Is(e,os.ErrNotExist){return a,nil}
  if e!=nil{return nil,e}
  if e=json.Unmarshal(b,&a.cfg);e!=nil{return nil,errors.New("invalid desktop configuration")}
  a.cfg.Token,e=unprotectToken(a.cfg.Token)
  if e!=nil{return nil,errors.New("could not unlock saved account token")}
+ a.cfg.SSHPassword,e=unprotectToken(a.cfg.SSHPassword)
+ if e!=nil{return nil,errors.New("could not unlock saved SSH password")}
+ if a.cfg.SSHPort==0{a.cfg.SSHPort=22}
+ if a.cfg.GatewayPort==0{a.cfg.GatewayPort=18443}
  return a,nil
 }
 func(a *desktopApp) persist(c clientConfig)error{
@@ -63,6 +71,8 @@ func(a *desktopApp) persist(c clientConfig)error{
  persisted:=c
  var e error
  persisted.Token,e=protectToken(c.Token)
+ if e!=nil{return e}
+ persisted.SSHPassword,e=protectToken(c.SSHPassword)
  if e!=nil{return e}
  b,e:=json.MarshalIndent(persisted,"","  ");if e!=nil{return e}
  tmp:=a.configFile+".tmp"
@@ -80,6 +90,7 @@ func desktopConfigValid(c clientConfig)error{
  if len(c.Token)<16||len(c.Token)>128||strings.ContainsAny(c.Token,"\r\n"){return errors.New("invalid_token")}
  pin,e:=hex.DecodeString(strings.ReplaceAll(strings.ToLower(c.Pin),":",""))
  if e!=nil||len(pin)!=sha256.Size{return errors.New("invalid_fingerprint")}
+ if e:=sshBridgeConfigValid(c);e!=nil{return e}
  return nil
 }
 func desktopPinnedConfig(c clientConfig)*tls.Config{
@@ -116,34 +127,50 @@ func desktopTunnelProbe(c clientConfig,target string,port uint16)error{
  if result[0]!=0{return errors.New("destination_unreachable")}
  return nil
 }
+// Start a fully managed proxy. When SSH settings are provided, no terminal or
+// separately maintained local-forward process is required.
 func(a *desktopApp) start()error{
  a.mu.Lock()
  defer a.mu.Unlock()
  if a.ln!=nil{return errors.New("already_running")}
  if e:=desktopConfigValid(a.cfg);e!=nil{return e}
- if e:=desktopProbe(a.cfg);e!=nil{return e}
- pin,e:=hex.DecodeString(strings.ReplaceAll(strings.ToLower(a.cfg.Pin),":",""))
+ cfg:=a.cfg
+ var bridge *sshBridge
+ if cfg.SSHHost!=""{
+  b,e:=startSSHBridge(cfg)
+  if e!=nil{return e}
+  bridge=b
+  cfg.Server=b.gatewayAddress
+ }
+ // Tear down any just-created SSH bridge on failure, without changing the
+ // working browser proxy settings.
+ success:=false
+ defer func(){if !success&&bridge!=nil{bridge.Close()}}()
+ if e:=desktopProbe(cfg);e!=nil{return e}
+ if bridge!=nil{
+  if e:=desktopTunnelProbe(cfg,"example.com",443);e!=nil{return errors.New("AFTAB gateway rejected account or internet test")}
+ }
+ pin,e:=hex.DecodeString(strings.ReplaceAll(strings.ToLower(cfg.Pin),":",""))
  if e!=nil{return e}
- ln,e:=net.Listen("tcp",a.cfg.Listen)
+ ln,e:=net.Listen("tcp",cfg.Listen)
  if e!=nil{return errors.New("local_socks_port_unavailable")}
  httpLn,e:=net.Listen("tcp","127.0.0.1:10809")
  if e!=nil{_ =ln.Close();return errors.New("local_http_proxy_port_unavailable")}
- cfg:=a.cfg
  tracker:=newSOCKSTracker()
  server:=newLocalHTTPProxyServer(cfg,tracker)
  if cfg.UseSystemProxy{
   if e=applySystemProxy(a.configFile+".system-proxy-backup");e!=nil{
-   _=ln.Close();_ =httpLn.Close()
+   _=ln.Close();_=httpLn.Close()
    return e
   }
   if e=startSystemProxyWatchdog(a.configFile);e!=nil{
    _=recoverSystemProxy(a.configFile+".system-proxy-backup")
-   _=ln.Close();_ =httpLn.Close()
+   _=ln.Close();_=httpLn.Close()
    return errors.New("unable to activate proxy recovery watchdog")
   }
   a.proxyApplied=true
  }
- a.ln=ln;a.httpLn=httpLn;a.httpServer=server;a.tracker=tracker
+ a.ln=ln;a.httpLn=httpLn;a.httpServer=server;a.tracker=tracker;a.bridge=bridge
  go func(){
   e:=serveSOCKSTracked(ln,cfg,pin,tracker)
   if e!=nil&&!errors.Is(e,net.ErrClosed){event("error","desktop","socks_stopped","listener_error")}
@@ -152,13 +179,44 @@ func(a *desktopApp) start()error{
   e:=serveLocalHTTPProxy(httpLn,server)
   if e!=nil&&!errors.Is(e,net.ErrClosed){event("error","desktop","http_proxy_stopped","listener_error")}
  }()
+ if bridge!=nil{go a.monitorSSHBridge(bridge,cfg.GatewayPort)}
+ success=true
+ return nil
+}
+func(a *desktopApp) monitorSSHBridge(bridge *sshBridge,remotePort int){
+ timer:=time.NewTicker(15*time.Second)
+ defer timer.Stop()
+ for range timer.C{
+  a.mu.Lock();active:=a.bridge==bridge&&a.ln!=nil;a.mu.Unlock()
+  if !active{return}
+  if !bridge.remoteAlive(remotePort){
+   event("warn","desktop","ssh_transport_lost","proxy_stopped")
+   a.stop()
+   a.note("","ssh_disconnected")
+   return
+  }
+ }
+}
+func desktopProbeManaged(c clientConfig,checkAccount bool)error{
+ if e:=desktopConfigValid(c);e!=nil{return e}
+ var b *sshBridge
+ if c.SSHHost!=""{
+  bridge,e:=startSSHBridge(c)
+  if e!=nil{return e}
+  b=bridge
+  defer b.Close()
+  c.Server=b.gatewayAddress
+ }
+ if e:=desktopProbe(c);e!=nil{return e}
+ if checkAccount{return desktopTunnelProbe(c,"example.com",443)}
  return nil
 }
 func(a *desktopApp) stop(){
  a.mu.Lock()
  ln,httpLn,server,tracker:=a.ln,a.httpLn,a.httpServer,a.tracker
+ bridge:=a.bridge
  applied:=a.proxyApplied
- a.ln=nil;a.httpLn=nil;a.httpServer=nil;a.tracker=nil;a.proxyApplied=false
+ a.ln=nil;a.httpLn=nil;a.httpServer=nil;a.tracker=nil;a.bridge=nil;a.proxyApplied=false
  a.mu.Unlock()
  // Restore Windows settings before closing the local endpoints.
  if applied{
@@ -170,6 +228,7 @@ func(a *desktopApp) stop(){
  if httpLn!=nil{_ =httpLn.Close()}
  if ln!=nil{_ =ln.Close()}
  if tracker!=nil{tracker.closeAll()}
+ if bridge!=nil{bridge.Close()}
 }
 
 func(a *desktopApp) authorized(r *http.Request)bool{
@@ -183,7 +242,7 @@ func(a *desktopApp) view(w http.ResponseWriter,r *http.Request){
    http.SetCookie(w,&http.Cookie{Name:"aftab_desktop_lang",Value:lang,Path:"/",SameSite:http.SameSiteStrictMode,MaxAge:31536000})
   }
  a.mu.Lock()
- d:=desktopView{Lang:desktopLocale(r),Running:a.ln!=nil,Server:a.cfg.Server,Listen:a.cfg.Listen,Pin:a.cfg.Pin,HasToken:a.cfg.Token!="",SystemProxy:a.cfg.UseSystemProxy,AutoProxyActive:a.proxyApplied,IsWindows:runtime.GOOS=="windows",CSRF:a.csrf,Message:a.msg,Error:a.errCode}
+ d:=desktopView{Lang:desktopLocale(r),Running:a.ln!=nil,Server:a.cfg.Server,Listen:a.cfg.Listen,Pin:a.cfg.Pin,HasToken:a.cfg.Token!="",SystemProxy:a.cfg.UseSystemProxy,AutoProxyActive:a.proxyApplied,IsWindows:runtime.GOOS=="windows",SSHHost:a.cfg.SSHHost,SSHUser:a.cfg.SSHUser,HasSSHPassword:a.cfg.SSHPassword!="",CSRF:a.csrf,Message:a.msg,Error:a.errCode}
  logFile:=a.logFile
  a.mu.Unlock()
  d.Events=readDesktopEvents(logFile)
@@ -232,18 +291,21 @@ func(a *desktopApp) ServeHTTP(w http.ResponseWriter,r *http.Request){
  case "/save":
   a.mu.Lock();running:=a.ln!=nil;prior:=a.cfg;a.mu.Unlock()
   if running{a.note("","disconnect_first");break}
-  c:=clientConfig{Server:strings.TrimSpace(r.FormValue("server")),Pin:strings.TrimSpace(r.FormValue("pin")),Listen:"127.0.0.1:10808",Token:r.FormValue("token"),UseSystemProxy:r.FormValue("system_proxy")=="yes"}
+  c:=clientConfig{Server:strings.TrimSpace(r.FormValue("server")),Pin:strings.TrimSpace(r.FormValue("pin")),Listen:"127.0.0.1:10808",Token:r.FormValue("token"),UseSystemProxy:r.FormValue("system_proxy")=="yes",SSHHost:strings.TrimSpace(r.FormValue("ssh_host")),SSHUser:strings.TrimSpace(r.FormValue("ssh_user")),SSHPassword:r.FormValue("ssh_password"),SSHPort:22,GatewayPort:18443}
   if c.Token==""{c.Token=prior.Token}
+  if c.SSHPassword==""{c.SSHPassword=prior.SSHPassword}
+  // One-click SSH mode always enables the Windows browser proxy.
+  if c.SSHHost!=""&&runtime.GOOS=="windows"{c.UseSystemProxy=true}
   if e:=desktopConfigValid(c);e!=nil{a.note("","invalid_config");break}
   if e:=a.persist(c);e!=nil{a.note("","save_failed");break}
   a.mu.Lock();a.cfg=c;a.mu.Unlock()
   a.note("saved","");event("info","desktop","settings_saved","ok")
  case "/test":
   a.mu.Lock();c:=a.cfg;a.mu.Unlock()
-  if e:=desktopProbe(c);e!=nil{a.note("","test_failed");event("warn","desktop","connection_test_failed","tls_unavailable")}else{a.note("test_ok","");event("info","desktop","connection_test_ok","ok")}
+  if e:=desktopProbeManaged(c,false);e!=nil{a.note("","test_failed");event("warn","desktop","connection_test_failed","tls_unavailable")}else{a.note("test_ok","");event("info","desktop","connection_test_ok","ok")}
  case "/test-tunnel":
   a.mu.Lock();c:=a.cfg;a.mu.Unlock()
-  if e:=desktopTunnelProbe(c,"example.com",443);e!=nil{a.note("","tunnel_test_failed");event("warn","desktop","tunnel_test_failed","account_or_egress")}else{a.note("tunnel_test_ok","");event("info","desktop","tunnel_test_passed","ok")}
+  if e:=desktopProbeManaged(c,true);e!=nil{a.note("","tunnel_test_failed");event("warn","desktop","tunnel_test_failed","account_or_egress")}else{a.note("tunnel_test_ok","");event("info","desktop","tunnel_test_passed","ok")}
  case "/connect":
   if e:=a.start();e!=nil{a.note("","connect_failed");event("warn","desktop","connect_failed","connection_error")}else{a.note("connected","");event("info","desktop","proxy_started","ok")}
  case "/disconnect":
@@ -279,7 +341,7 @@ func startDesktop(configFile,addr,logFile string)error{
  if errors.Is(e,http.ErrServerClosed){return nil}
  return e
 }
-type desktopView struct {Lang,Dir,Server,Listen,Pin,CSRF,Message,Error string;Running,HasToken,SystemProxy,AutoProxyActive,IsWindows bool;Events []desktopEvent}
+type desktopView struct {Lang,Dir,Server,Listen,Pin,CSRF,Message,Error,SSHHost,SSHUser string;Running,HasToken,HasSSHPassword,SystemProxy,AutoProxyActive,IsWindows bool;Events []desktopEvent}
 var desktopDictionary=map[string]map[string]string{
  "en":{"systemProxy":"Automatically configure Windows browser proxy","proxyNote":"Use this for browser traffic. Some apps ignore system proxy settings.","httpProxy":"HTTP/HTTPS browser proxy: 127.0.0.1:10809","tunnelTest":"Test gateway and account","tunnel_test_ok":"Gateway accepted account and opened outbound TCP.","tunnel_test_failed":"Gateway, account or outbound connection failed.","tunnelTestHelp":"The gateway/account test checks example.com:443 from the server.","logs":"Recent diagnostics","logempty":"No diagnostic events available.","time":"Time","level":"Level","component":"Component","event":"Event","code":"Code","refresh":"Refresh","title":"AFTAB Desktop","subtitle":"Secure networking research","status":"Local proxy","running":"Running","stopped":"Stopped","server":"Gateway host:port","pin":"TLS certificate SHA-256 fingerprint","token":"Account token (leave blank to keep saved token)","save":"Save settings","test":"Test TLS","connect":"Connect","disconnect":"Disconnect","proxy":"Local SOCKS5 endpoint","warning":"Research preview only. This is a browser-managed SOCKS5 proxy, not a system-wide VPN.","saved":"Settings saved","test_ok":"Pinned TLS handshake succeeded","connected":"Local SOCKS proxy started","disconnected":"Proxy stopped","invalid_config":"Review host, token and certificate fingerprint","disconnect_first":"Disconnect before changing settings","save_failed":"Unable to save the configuration","test_failed":"Connection failed or certificate mismatch","connect_failed":"Could not start local proxy. Check the gateway and port.","security":"Client settings are stored in a local configuration file. Keep the computer and files secure.","help":"The gateway must already be reachable, and its certificate fingerprint must match."},
  "fa":{"systemProxy":"تنظیم خودکار پراکسی مرورگرهای ویندوز","proxyNote":"این گزینه ترافیک مرورگرها را پوشش می‌دهد؛ بعضی برنامه‌ها از پراکسی سیستم استفاده نمی‌کنند.","httpProxy":"پراکسی مرورگر HTTP/HTTPS: 127.0.0.1:10809","tunnelTest":"تست درگاه و حساب کاربری","tunnel_test_ok":"درگاه حساب را پذیرفت و اتصال اینترنتی TCP برقرار شد.","tunnel_test_failed":"درگاه، توکن حساب یا اتصال خروجی ناموفق بود.","tunnelTestHelp":"در تست حساب، سرور اتصال به example.com:443 را بررسی می‌کند.","logs":"گزارش خطاهای اخیر","logempty":"هنوز رویدادی ثبت نشده است.","time":"زمان","level":"سطح","component":"بخش","event":"رویداد","code":"کد خطا","refresh":"به‌روزرسانی","title":"آفتاب | کلاینت","subtitle":"پژوهش شبکه امن","status":"پراکسی محلی","running":"فعال","stopped":"متوقف","server":"نشانی سرور و پورت","pin":"اثر انگشت SHA-256 گواهی TLS","token":"توکن حساب (برای حفظ توکن قبلی خالی بگذارید)","save":"ذخیره تنظیمات","test":"تست اتصال TLS","connect":"اتصال","disconnect":"قطع اتصال","proxy":"نشانی پراکسی SOCKS5","warning":"نسخه پژوهشی؛ این برنامه پراکسی SOCKS5 است و هنوز VPN سراسری نیست.","saved":"تنظیمات ذخیره شد","test_ok":"اتصال TLS با اثر انگشت معتبر برقرار شد","connected":"پراکسی محلی راه‌اندازی شد","disconnected":"پراکسی متوقف شد","invalid_config":"نشانی، توکن یا اثر انگشت گواهی را بررسی کنید","disconnect_first":"قبل از تغییر تنظیمات اتصال را قطع کنید","save_failed":"ذخیره تنظیمات ناموفق بود","test_failed":"اتصال ناموفق بود یا اثر انگشت گواهی مطابقت ندارد","connect_failed":"راه‌اندازی پراکسی ناموفق بود؛ سرور و پورت را بررسی کنید","security":"تنظیمات کلاینت در فایل محلی ذخیره می‌شود. از امنیت دستگاه و فایل‌ها اطمینان حاصل کنید.","help":"درگاه سرور باید از قبل قابل دسترس باشد و اثر انگشت گواهی مطابقت داشته باشد."},
