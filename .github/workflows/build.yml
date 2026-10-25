@@ -13,6 +13,8 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.23'
+      - name: Resolve audited Go module checksums
+        run: go mod tidy
       - name: Format Go sources for deterministic test/build
         run: go fmt ./...
       - name: Unit and integration tests
@@ -67,6 +69,8 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.23'
+      - name: Resolve Go module checksums for native Windows tests
+        run: go mod tidy
       - name: Test native Windows DPAPI, GUI and SOCKS implementation
         run: go test -count=1 -timeout=90s ./cmd/aftab
       - name: Native Windows build
