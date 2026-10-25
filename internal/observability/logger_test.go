@@ -1,6 +1,7 @@
 package observability
 
 import (
+ "runtime"
  "bytes"
  "encoding/json"
  "errors"
@@ -21,7 +22,7 @@ func TestStructuredLogsRedactSecrets(t *testing.T){
  if entry["component"]!="gateway"||entry["event"]!="connection_rejected"||entry["code"]!="auth_failed"{t.Fatal("missing diagnostic fields")}
  if entry["token"]!="[REDACTED]"||entry["destination_host"]!="[REDACTED]"{t.Fatal("redaction missing")}
  info,e:=os.Stat(p);if e!=nil{t.Fatal(e)}
- if info.Mode().Perm()&0077!=0{t.Fatal("log file permissions too open")}
+ if runtime.GOOS!="windows"&&info.Mode().Perm()&0077!=0{t.Fatal("log file permissions too open")}
 }
 func TestLevelFiltering(t *testing.T){
  p:=filepath.Join(t.TempDir(),"events.jsonl")
