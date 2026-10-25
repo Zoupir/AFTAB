@@ -30,6 +30,7 @@ type desktopApp struct {
  configFile string
  cfg clientConfig
  ln net.Listener
+ tracker *socksTracker
  secret, session, csrf string
  bootUsed bool
  msg, errCode string
@@ -99,17 +100,21 @@ func(a *desktopApp) start()error{
  ln,e:=net.Listen("tcp",a.cfg.Listen)
  if e!=nil{return errors.New("local_port_unavailable")}
  a.ln=ln
+ tracker:=newSOCKSTracker()
+ a.tracker=tracker
  cfg:=a.cfg
  go func(){
-  e:=serveSOCKS(ln,cfg,pin)
-  a.mu.Lock();if a.ln==ln{a.ln=nil};a.mu.Unlock()
+  e:=serveSOCKSTracked(ln,cfg,pin,tracker)
+  a.mu.Lock();if a.ln==ln{a.ln=nil;a.tracker=nil};a.mu.Unlock()
+  tracker.closeAll()
   if e!=nil&&!errors.Is(e,net.ErrClosed){event("error","desktop","proxy_stopped","listener_error")}
  }()
  return nil
 }
 func(a *desktopApp) stop(){
- a.mu.Lock();ln:=a.ln;a.ln=nil;a.mu.Unlock()
+ a.mu.Lock();ln:=a.ln;tracker:=a.tracker;a.ln=nil;a.tracker=nil;a.mu.Unlock()
  if ln!=nil{_ =ln.Close()}
+ if tracker!=nil{tracker.closeAll()}
 }
 func(a *desktopApp) authorized(r *http.Request)bool{
  cookie,e:=r.Cookie("aftab_desktop")
