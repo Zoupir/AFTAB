@@ -30,10 +30,9 @@ func Write(w io.Writer, f Frame) error {
  // The payload length is encoded in a separate 4-byte field.
  var size [4]byte
  binary.BigEndian.PutUint32(size[:],uint32(len(f.Payload)))
- if _,e:=w.Write(header[:]);e!=nil{return e}
- if _,e:=w.Write(size[:]);e!=nil{return e}
- _,e:=w.Write(f.Payload)
- return e
+ if e:=writeAll(w,header[:]);e!=nil{return e}
+ if e:=writeAll(w,size[:]);e!=nil{return e}
+ return writeAll(w,f.Payload)
 }
 
 func Read(r io.Reader)(Frame,error){
@@ -50,4 +49,15 @@ func Read(r io.Reader)(Frame,error){
  f.Payload=make([]byte,n)
  _,e:=io.ReadFull(r,f.Payload)
  return f,e
+}
+
+func writeAll(w io.Writer, p []byte) error {
+ for len(p)>0 {
+  n,e:=w.Write(p)
+  if n<0||n>len(p){return io.ErrShortWrite}
+  p=p[n:]
+  if e!=nil{return e}
+  if n==0{return io.ErrShortWrite}
+ }
+ return nil
 }
