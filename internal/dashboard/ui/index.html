@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="{{.Lang}}" dir="{{.Dir}}">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark"><meta name="robots" content="noindex,nofollow">
+<title>{{tr "app"}} · AFTAB</title>
+<link rel="stylesheet" href="/assets/style.css">
+</head>
+<body>
+{{if or (eq .Section "setup") (eq .Section "login")}}
+<div class="authShell"><div class="authBox">
+  <div class="brand"><span class="brandIcon">A</span><span><strong>AFTAB</strong><small>{{tr "tagline"}}</small></span></div>
+  <div class="eyebrow">{{tr "research"}}</div>
+  {{if eq .Section "setup"}}
+  <h1>{{tr "setup"}}</h1><p class="muted">{{tr "setupHelp"}}</p>
+  {{else}}
+  <h1>{{tr "login"}}</h1><p class="muted">{{tr "signInHelp"}}</p>
+  {{end}}
+  {{if .Error}}<p class="alert error" role="alert">{{.Error}}</p>{{end}}
+  <form method="post" action="{{if eq .Section "setup"}}/setup{{else}}/login{{end}}" autocomplete="on">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <label>{{tr "username"}}<input name="username" required minlength="3" maxlength="48" autocomplete="username" spellcheck="false"></label>
+    <label>{{tr "password"}}<input name="password" type="password" required {{if eq .Section "setup"}}minlength="12" maxlength="128" autocomplete="new-password"{{else}}autocomplete="current-password"{{end}}></label>
+    {{if eq .Section "setup"}}
+    <label>{{tr "confirm"}}<input name="confirm" type="password" required minlength="12" maxlength="128" autocomplete="new-password"></label>
+    <label>{{tr "language"}}<select name="language">
+     <option value="fa" {{if eq .Lang "fa"}}selected{{end}}>فارسی</option>
+     <option value="en" {{if eq .Lang "en"}}selected{{end}}>English</option>
+     <option value="de" {{if eq .Lang "de"}}selected{{end}}>Deutsch</option>
+     <option value="ar" {{if eq .Lang "ar"}}selected{{end}}>العربية</option>
+    </select></label>
+    {{end}}
+    <button type="submit" class="primary">{{if eq .Section "setup"}}{{tr "install"}}{{else}}{{tr "login"}}{{end}}</button>
+  </form>
+  {{if eq .Section "setup"}}<p class="fine">{{tr "setupNote"}}</p>{{end}}
+  <div class="langs"><a href="?lang=fa">فارسی</a><a href="?lang=en">English</a><a href="?lang=de">Deutsch</a><a href="?lang=ar">العربية</a></div>
+</div></div>
+{{else}}
+<div class="layout">
+ <aside class="sidebar">
+  <div class="brand"><span class="brandIcon">A</span><span><strong>AFTAB</strong><small>RESEARCH CONTROL</small></span></div>
+  <div class="eyebrow">{{tr "research"}}</div>
+  <nav aria-label="AFTAB">
+   <a href="/" {{if eq .Section "home"}}class="selected"{{end}}><span>◫</span>{{tr "dashboard"}}</a>
+   <a href="/users" {{if eq .Section "users"}}class="selected"{{end}}><span>♧</span>{{tr "users"}}</a>
+   <a href="/diagnostics" {{if eq .Section "diagnostics"}}class="selected"{{end}}><span>⌁</span>{{tr "diagnostics"}}</a>
+  </nav>
+  <div class="sideFoot"><span class="statusDot"></span>{{tr "statusValue"}}<small>{{tr "warning"}}</small></div>
+ </aside>
+ <main class="main">
+  <header class="topbar"><div><strong>{{tr "app"}}</strong><small>{{tr "manage"}}</small></div>
+   <div class="headerActions">
+    <div class="langs"><a href="?lang=fa">FA</a><a href="?lang=en">EN</a><a href="?lang=de">DE</a><a href="?lang=ar">AR</a></div>
+    <span class="username">{{.Username}}</span>
+    <form method="post" action="/logout"><input type="hidden" name="csrf" value="{{.CSRF}}"><button class="quiet">{{tr "logout"}}</button></form>
+   </div>
+  </header>
+  {{if .Error}}<p class="alert error" role="alert">{{.Error}}</p>{{end}}
+  {{if .Notice}}<p class="alert success" role="status">{{.Notice}}</p>{{end}}
+  {{if eq .Section "home"}}
+  <div class="eyebrow">AFTAB / OVERVIEW</div><h1>{{tr "welcome"}}</h1><p class="muted">{{tr "manage"}}</p>
+  <div class="metrics">
+   <div class="metric"><span>{{tr "totalUsers"}}</span><strong>{{.Total}}</strong></div>
+   <div class="metric"><span>{{tr "activeUsers"}}</span><strong>{{.Active}}</strong></div>
+   <div class="metric"><span>{{tr "serverStatus"}}</span><strong class="statusText">{{tr "statusValue"}}</strong></div>
+  </div>
+  <div class="panel"><h2>{{tr "privacy"}}</h2><p class="muted">{{tr "privacyHelp"}}</p><p class="fine">{{tr "warning"}}</p></div>
+  {{end}}
+  {{if eq .Section "users"}}
+  <div class="eyebrow">AFTAB / USERS</div><h1>{{tr "accounts"}}</h1>
+  <div class="panel">
+   <h2>{{tr "newUser"}}</h2>
+   <form class="userForm" method="post" action="/users/create">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <label>{{tr "accountName"}}<input name="name" pattern="[A-Za-z0-9._-]{1,80}" required maxlength="80" autocomplete="off"></label>
+    <label>{{tr "days"}}<input name="days" type="number" min="1" max="3650" value="30" required></label>
+    <label>{{tr "quota"}}<input name="gb" type="number" min="1" max="100000" value="30" required></label>
+    <button type="submit" class="primary">{{tr "create"}}</button>
+   </form>
+   {{if .CreatedToken}}
+   <div class="alert success"><strong>{{tr "created"}}: {{.CreatedName}}</strong><p>{{tr "once"}}</p><code class="oneTime">{{.CreatedToken}}</code></div>
+   {{end}}
+  </div>
+  <div class="panel"><h2>{{tr "userList"}}</h2>
+   {{if .Users}}
+   <div class="tablewrap"><table><thead><tr><th>{{tr "accountName"}}</th><th>{{tr "expiry"}}</th><th>{{tr "used"}}</th><th>{{tr "state"}}</th><th></th></tr></thead>
+   <tbody>{{range .Users}}<tr>
+    <td class="mono">{{.Name}}</td><td class="mono">{{.Expires}}</td><td class="mono">{{gib .UsedBytes}} / {{gib .QuotaBytes}}</td>
+    <td>{{if .Disabled}}<span class="tag bad">{{tr "inactive"}}</span>{{else}}<span class="tag good">{{tr "active"}}</span>{{end}}</td>
+    <td>{{if not .Disabled}}<form method="post" action="/users/disable"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="name" value="{{.Name}}"><button class="quiet" type="submit">{{tr "disable"}}</button></form>{{end}}</td>
+   </tr>{{end}}</tbody></table></div>
+   {{else}}<p class="muted">{{tr "emptyUsers"}}</p>{{end}}
+  </div>
+  {{end}}
+  {{if eq .Section "diagnostics"}}
+  <div class="eyebrow">AFTAB / DIAGNOSTICS</div><h1>{{tr "diagnostics"}}</h1>
+  <div class="panel"><h2>{{tr "logs"}}</h2><p class="muted">{{tr "logHint"}}</p>
+   {{if .Events}}
+    <div class="tablewrap"><table><thead><tr><th>{{tr "time"}}</th><th>{{tr "level"}}</th><th>{{tr "component"}}</th><th>{{tr "event"}}</th><th>{{tr "code"}}</th></tr></thead>
+    <tbody>{{range .Events}}<tr><td class="mono">{{.Time}}</td><td class="mono">{{.Level}}</td><td class="mono">{{.Component}}</td><td class="mono">{{.Event}}</td><td class="mono">{{.Code}}</td></tr>{{end}}</tbody></table></div>
+   {{else}}<p class="muted">{{tr "noLogs"}}</p>{{end}}
+  </div>
+  {{end}}
+ </main>
+</div>
+{{end}}
+</body></html>
