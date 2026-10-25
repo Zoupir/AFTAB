@@ -111,10 +111,26 @@ type clientConfig struct {Server string `json:"server"`; Listen string `json:"li
 func proxy(cfg clientConfig)error{
  if cfg.Listen==""{cfg.Listen="127.0.0.1:10808"}
  if !loopback(cfg.Listen){return errors.New("SOCKS listener must be loopback")}
- pin,e:=hex.DecodeString(strings.ReplaceAll(strings.ToLower(cfg.Pin),":",""));if e!=nil||len(pin)!=32{return errors.New("invalid SHA256 certificate pin")}
- ln,e:=net.Listen("tcp",cfg.Listen);if e!=nil{return e};defer ln.Close();event("info","client","listener_started","ok")
- for{c,e:=ln.Accept();if e!=nil{return e};go func(){defer c.Close();if e:=socks(c,cfg,pin);e!=nil{event("warn","client","connection_failed","proxy_error")}}()}
+ pin,e:=hex.DecodeString(strings.ReplaceAll(strings.ToLower(cfg.Pin),":",""))
+ if e!=nil||len(pin)!=32{return errors.New("invalid SHA256 certificate pin")}
+ ln,e:=net.Listen("tcp",cfg.Listen);if e!=nil{return e}
+ return serveSOCKS(ln,cfg,pin)
 }
+func serveSOCKS(ln net.Listener,cfg clientConfig,pin []byte)error{
+ defer ln.Close();event("info","client","listener_started","ok")
+ for{
+  c,e:=ln.Accept()
+  if e!=nil{
+   if errors.Is(e,net.ErrClosed){return nil}
+   return e
+  }
+  go func(){
+   defer c.Close()
+   if e:=socks(c,cfg,pin);e!=nil{event("warn","client","connection_failed","proxy_error")}
+  }()
+ }
+}
+
 func socks(c net.Conn,cfg clientConfig,pin []byte)error{
  _=c.SetDeadline(time.Now().Add(15*time.Second));r:=bufio.NewReader(c)
  h:=make([]byte,2);if _,e:=io.ReadFull(r,h);e!=nil{return e};if h[0]!=5||h[1]==0{return errors.New("not SOCKS5")}
@@ -178,7 +194,9 @@ func admin(addr string,s *store)error{
  event("info","admin","listener_started","ok");return http.ListenAndServe(addr,mux)
 }
 func main(){
- mode:=flag.String("mode","server","server or client")
+ initialMode:="server"
+ if runtime.GOOS=="windows"{initialMode="desktop"}
+ mode:=flag.String("mode",initialMode,"server, desktop or client")
  listen:=flag.String("listen","","listen address")
  adminAddr:=flag.String("admin","127.0.0.1:19090","loopback admin")
  cert:=flag.String("cert","","server TLS certificate")
@@ -210,6 +228,11 @@ func main(){
    go func(){if e:=gateway(*listen,*cert,*key,s);e!=nil{event("error","gateway","listener_stopped","legacy_listener_error")}}()
   }
   log.Fatal(<-errCh)
+ case "desktop":
+  if *config==""{*config=defaultDesktopConfig()}
+  uiAddr:="127.0.0.1:19091"
+  if *adminAddr!="127.0.0.1:19090"{uiAddr=*adminAddr}
+  if e:=startDesktop(*config,uiAddr);e!=nil{log.Fatal(e)}
  case "client":
   if *config==""{log.Fatal("client needs -config")}
   var c clientConfig;b,e:=os.ReadFile(*config);if e!=nil{log.Fatal(e)}
