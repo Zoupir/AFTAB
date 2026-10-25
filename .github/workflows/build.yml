@@ -1,18 +1,29 @@
-name: Go checks
+name: Go checks and preview builds
 on:
   push:
   pull_request:
+permissions:
+  contents: read
 jobs:
   build:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version: '1.23'
-      - run: go test ./...
-      - run: go vet ./...
-      - run: go build ./cmd/aftab
-      - run: GOOS=windows GOARCH=amd64 go build -o aftab-windows-amd64.exe ./cmd/aftab
+      - name: Unit tests
+        run: go test -race ./...
+      - name: Static analysis
+        run: go vet ./...
+      - name: Linux executable
+        run: CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -o dist/aftab-linux-amd64 ./cmd/aftab
+      - name: Windows executable
+        run: CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -o dist/aftab-windows-amd64.exe ./cmd/aftab
+      - name: Checksum manifest
+        run: cd dist && sha256sum * > SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aftab-research-preview
+          path: dist/
+          retention-days: 14
