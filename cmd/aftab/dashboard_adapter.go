@@ -32,9 +32,10 @@ func(b accountBackend) DisableUser(name string)error{
  if e:=b.s.save();e!=nil{u.Disabled=old;return e}
  return nil
 }
-func newDashboard(addr,state,diagnostics string,s *store)(*dashboard.App,error){
+func newDashboard(addr,state,diagnostics string,s *store,gateway dashboard.GatewayController)(*dashboard.App,error){
  a,e:=dashboard.New(dashboard.Config{
   CredentialsPath:state,
+  Gateway:gateway,
   DiagnosticsPath:diagnostics,
   Backend:accountBackend{s:s},
   OnEvent:func(name,code string){event("info","dashboard",name,code)},
