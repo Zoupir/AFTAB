@@ -23,7 +23,14 @@ import (
  "strings"
  "sync"
  "time"
+
+ "github.com/Zoupir/AFTAB/internal/observability"
 )
+
+var diagnostics *observability.Logger
+func event(level, component, name, code string, fields ...any) {
+ if diagnostics!=nil { diagnostics.Log(level,component,name,observability.ID(),code,fields...) }
+}
 
 type User struct {
  Name string `json:"name"`
@@ -74,18 +81,18 @@ func loopback(addr string)bool{h,_,e:=net.SplitHostPort(addr);if e!=nil{return f
 func gateway(addr,cert,key string,s *store)error{
  pair,e:=tls.LoadX509KeyPair(cert,key);if e!=nil{return e}
  ln,e:=tls.Listen("tcp",addr,&tls.Config{MinVersion:tls.VersionTLS13,Certificates:[]tls.Certificate{pair}});if e!=nil{return e}
- defer ln.Close();log.Printf("gateway listening on %s",ln.Addr())
+ defer ln.Close();event("info","gateway","listener_started","ok")
  for{c,e:=ln.Accept();if e!=nil{return e};go func(){
   defer c.Close();_ =c.SetDeadline(time.Now().Add(15*time.Second))
   r:=bufio.NewReaderSize(c,512)
   tok,e:=r.ReadString('\n');if e!=nil||len(tok)>128{return}
-  id:=s.userFor(strings.TrimSpace(tok));if id==""{return}
+  id:=s.userFor(strings.TrimSpace(tok));if id==""{event("warn","gateway","connection_rejected","unauthorized");return}
   host,e:=r.ReadString('\n');if e!=nil||len(host)>260{return};host=strings.TrimSpace(host)
   pb:=make([]byte,2);if _,e=io.ReadFull(r,pb);e!=nil{return}
   port:=binary.BigEndian.Uint16(pb);if port==0||host==""{return}
   // Lab-only: arbitrary destination access; never expose publicly without ACLs.
   upstream,e:=net.DialTimeout("tcp",net.JoinHostPort(host,strconv.Itoa(int(port))),10*time.Second)
-  if e!=nil{_,_=c.Write([]byte{1});return};defer upstream.Close()
+  if e!=nil{event("warn","gateway","dial_failed","upstream_unreachable");_,_=c.Write([]byte{1});return};defer upstream.Close()
   _,_=c.Write([]byte{0});_ =c.SetDeadline(time.Time{})
   relay(c,r,upstream,func(n int64){s.credit(id,n)})
  }()}
@@ -101,8 +108,8 @@ func proxy(cfg clientConfig)error{
  if cfg.Listen==""{cfg.Listen="127.0.0.1:10808"}
  if !loopback(cfg.Listen){return errors.New("SOCKS listener must be loopback")}
  pin,e:=hex.DecodeString(strings.ReplaceAll(strings.ToLower(cfg.Pin),":",""));if e!=nil||len(pin)!=32{return errors.New("invalid SHA256 certificate pin")}
- ln,e:=net.Listen("tcp",cfg.Listen);if e!=nil{return e};defer ln.Close();log.Println("SOCKS5 on",cfg.Listen)
- for{c,e:=ln.Accept();if e!=nil{return e};go func(){defer c.Close();if e:=socks(c,cfg,pin);e!=nil{log.Print("SOCKS: ",e)}}()}
+ ln,e:=net.Listen("tcp",cfg.Listen);if e!=nil{return e};defer ln.Close();event("info","client","listener_started","ok")
+ for{c,e:=ln.Accept();if e!=nil{return e};go func(){defer c.Close();if e:=socks(c,cfg,pin);e!=nil{event("warn","client","connection_failed","proxy_error")}}()}
 }
 func socks(c net.Conn,cfg clientConfig,pin []byte)error{
  _=c.SetDeadline(time.Now().Add(15*time.Second));r:=bufio.NewReader(c)
@@ -164,7 +171,7 @@ func admin(addr string,s *store)error{
   u.Disabled=true;if e:=s.save();e!=nil{http.Error(w,"storage",500);return}
   w.WriteHeader(204)
  })
- log.Println("admin at",addr);return http.ListenAndServe(addr,mux)
+ event("info","admin","listener_started","ok");return http.ListenAndServe(addr,mux)
 }
 func main(){
  mode:=flag.String("mode","server","server or client")
@@ -174,7 +181,14 @@ func main(){
  key:=flag.String("key","","server TLS key")
  db:=flag.String("db","./aftab-users.json","user store")
  config:=flag.String("config","","client JSON config")
+ logLevel:=flag.String("log-level","info","debug, info, warn or error")
+ logFile:=flag.String("log-file","","path to newline-delimited JSON diagnostic logs; default stderr")
  flag.Parse()
+ var diagErr error
+ diagnostics,diagErr=observability.New(*logLevel,*logFile)
+ if diagErr!=nil { log.Fatal("diagnostics initialization failed: ",diagErr) }
+ defer diagnostics.Close()
+ event("info","process","starting","ok","mode",*mode)
  switch *mode{
  case "server":
   if *listen==""{*listen="127.0.0.1:18443"}
