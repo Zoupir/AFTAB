@@ -34,6 +34,7 @@ func TestSOCKSThroughLocalPinnedGateway(t *testing.T){
  defer g.Stop()
  cfg:=clientConfig{Server:g.Status().Listen,Listen:"127.0.0.1:10808",Token:token,Pin:g.Status().Fingerprint}
  if e=desktopProbe(cfg);e!=nil{t.Fatal("TLS pin probe failed:",e)}
+ if e=desktopTunnelProbe(cfg,destHost,uint16(destPort));e!=nil{t.Fatal("GUI account+gateway probe failed:",e)}
  pin,_:=hex.DecodeString(cfg.Pin)
  proxyListener,e:=net.Listen("tcp","127.0.0.1:0")
  if e!=nil{t.Fatal(e)}
