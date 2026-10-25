@@ -49,21 +49,24 @@ func TestDesktopBootstrapAndCSRF(t *testing.T){
 }
 func TestDesktopConfigRoundtripWithoutTokenExposure(t *testing.T){
  a:=desktopTestApp(t)
- c:=clientConfig{Server:"127.0.0.1:18443",Listen:"127.0.0.1:10808",Token:"0123456789abcdef0123456789abcdef",Pin:strings.Repeat("ab",32)}
+ c:=clientConfig{Server:"127.0.0.1:18443",Listen:"127.0.0.1:10808",Token:"0123456789abcdef0123456789abcdef",Pin:strings.Repeat("ab",32),SSHHost:"69.169.109.229",SSHUser:"root",SSHPassword:"TEST-DUMMY-PRIVATE-SSH-CREDENTIAL",SSHPort:22,GatewayPort:18443}
  if e:=desktopConfigValid(c);e!=nil{t.Fatal(e)}
  if e:=a.persist(c);e!=nil{t.Fatal(e)}
  info,e:=os.Stat(a.configFile);if e!=nil{t.Fatal(e)}
  if runtime.GOOS!="windows"&&info.Mode().Perm()&0077!=0{t.Fatal("desktop config is not private")}
  loaded,e:=newDesktop(a.configFile);if e!=nil{t.Fatal(e)}
  if loaded.cfg.Token!=c.Token{t.Fatal("saved token missing")}
+ if loaded.cfg.SSHPassword!=c.SSHPassword{t.Fatal("SSH password was not restored from protected storage")}
  launch:=httptest.NewRecorder();loaded.ServeHTTP(launch,desktopRequest("GET","/open?ticket="+loaded.secret,""))
  cookie:=launch.Result().Cookies()[0]
  page:=desktopRequest("GET","/","");page.AddCookie(cookie)
  w:=httptest.NewRecorder();loaded.ServeHTTP(w,page)
  if strings.Contains(w.Body.String(),c.Token){t.Fatal("account token leaked to HTML")}
+ if strings.Contains(w.Body.String(),c.SSHPassword){t.Fatal("SSH password leaked to HTML")}
  raw,e:=os.ReadFile(a.configFile);if e!=nil{t.Fatal(e)}
  var stored clientConfig
  if e=json.Unmarshal(raw,&stored);e!=nil||stored.Server!=c.Server{t.Fatal("configuration damaged")}
+ if runtime.GOOS=="windows" && strings.Contains(string(raw),c.SSHPassword){t.Fatal("SSH password saved unencrypted in Windows config")}
 }
 func TestDesktopBadConfigurations(t *testing.T){
  valid:=clientConfig{Server:"127.0.0.1:18443",Listen:"127.0.0.1:10808",Token:"0123456789abcdef0123456789abcdef",Pin:strings.Repeat("ab",32)}
@@ -120,6 +123,22 @@ func TestDesktopSaveAllowsRewrittenOriginButStillRequiresCSRF(t *testing.T){
  rec:=httptest.NewRecorder()
  a.ServeHTTP(rec,req)
  if rec.Code!=http.StatusForbidden{t.Fatal("invalid CSRF token was accepted")}
+}
+
+func TestDesktopSSHValidation(t *testing.T){
+ cfg:=clientConfig{Server:"127.0.0.1:18443",Listen:"127.0.0.1:10808",Token:"0123456789abcdef0123456789abcdef",Pin:strings.Repeat("ab",32),SSHHost:"69.169.109.229",SSHUser:"root",SSHPassword:"testpassword",SSHPort:22,GatewayPort:18443}
+ if e:=desktopConfigValid(cfg);e!=nil{t.Fatalf("valid SSH connection rejected: %v",e)}
+ for _,modify:=range []func(*clientConfig){
+  func(c *clientConfig){c.SSHHost="bad host"},
+  func(c *clientConfig){c.SSHHost="127.0.0.1:22"},
+  func(c *clientConfig){c.SSHPassword=""},
+  func(c *clientConfig){c.SSHUser="root; rm -rf /"},
+  func(c *clientConfig){c.GatewayPort=0},
+  func(c *clientConfig){c.SSHPort=0},
+ } {
+  wrong:=cfg;modify(&wrong)
+  if e:=desktopConfigValid(wrong);e==nil{t.Fatal("invalid SSH configuration accepted")}
+ }
 }
 
 func TestDesktopDisconnectClosesTrackedSockets(t *testing.T){
