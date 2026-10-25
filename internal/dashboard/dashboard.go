@@ -39,8 +39,8 @@ type Backend interface {
  CreateUser(name string, days int, gb int64)(string,error)
  DisableUser(name string) error
 }
-type GatewayStatus struct {Running bool; Listen, Fingerprint, LastError string}
-type GatewayController interface {Status() GatewayStatus; Start(port int) error; Test() error}
+type GatewayStatus struct {Running, Public bool; Listen, Fingerprint, LastError string}
+type GatewayController interface {Status() GatewayStatus; Start(port int,public bool) error; Test() error}
 type Config struct {
  Gateway GatewayController
  CredentialsPath string
@@ -232,7 +232,7 @@ func(a *App) ServeHTTP(w http.ResponseWriter,r *http.Request){
    }
   case "/settings/start":
    port,e:=strconv.Atoi(r.FormValue("port"))
-   if e!=nil||port<1024||port>65535||a.config.Gateway==nil{p.Error=translate(lang,"gatewayInvalid")}else if e=a.config.Gateway.Start(port);e!=nil{p.Error=translate(lang,"gatewayFailed")}else{p.Notice=translate(lang,"gatewayStarted");a.emit("gateway_start_requested","ok")}
+   if e!=nil||port<1024||port>65535||a.config.Gateway==nil{p.Error=translate(lang,"gatewayInvalid")}else if e=a.config.Gateway.Start(port,r.FormValue("public")=="yes");e!=nil{p.Error=translate(lang,"gatewayFailed")}else{p.Notice=translate(lang,"gatewayStarted");a.emit("gateway_start_requested","ok")}
   case "/settings/test":
    if a.config.Gateway==nil{p.Error=translate(lang,"gatewayFailed")}else if e:=a.config.Gateway.Test();e!=nil{p.Error=translate(lang,"gatewayTestFailed")}else{p.Notice=translate(lang,"gatewayTestOK");a.emit("gateway_self_test","ok")}
   case "/users/disable":
