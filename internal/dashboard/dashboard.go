@@ -104,6 +104,10 @@ func(a *App) language(w http.ResponseWriter,r *http.Request)string{
  if c,e:=r.Cookie("aftab_lang");e==nil{return validLang(c.Value)}
  a.mu.Lock();defer a.mu.Unlock()
  if a.state.Language!=""{return validLang(a.state.Language)}
+ browser:=strings.ToLower(r.Header.Get("Accept-Language"))
+ if strings.HasPrefix(browser,"fa"){return "fa"}
+ if strings.HasPrefix(browser,"ar"){return "ar"}
+ if strings.HasPrefix(browser,"de"){return "de"}
  return "en"
 }
 func remoteLoopback(addr string)bool{host,_,e:=net.SplitHostPort(addr);if e!=nil{return false};ip:=net.ParseIP(host);return ip!=nil&&ip.IsLoopback()}
@@ -121,7 +125,7 @@ func sameOrigin(r *http.Request)bool{
 func(a *App) newSession(w http.ResponseWriter,r *http.Request)session{
  raw:=randomHex(32);sum:=sha256.Sum256([]byte(raw))
  s:=session{CSRF:randomHex(32),Expires:time.Now().Add(12*time.Hour)}
- a.mu.Lock();a.sessions[hex.EncodeToString(sum[:])]=s;a.mu.Unlock()
+ a.mu.Lock();for k,v:=range a.sessions{if time.Now().After(v.Expires){delete(a.sessions,k)}};a.sessions[hex.EncodeToString(sum[:])]=s;a.mu.Unlock()
  http.SetCookie(w,&http.Cookie{Name:"aftab_sid",Value:raw,Path:"/",HttpOnly:true,Secure:r.TLS!=nil,SameSite:http.SameSiteStrictMode,MaxAge:43200})
  return s
 }
@@ -165,6 +169,7 @@ func(a *App) render(w http.ResponseWriter,r *http.Request,p page){
 }
 func(a *App) ServeHTTP(w http.ResponseWriter,r *http.Request){
  if !remoteLoopback(r.RemoteAddr){http.Error(w,"local access only",403);return}
+ if r.Method=="POST"{r.Body=http.MaxBytesReader(w,r.Body,16*1024)}
  if r.URL.Path=="/assets/style.css"{
   b,e:=assets.ReadFile("ui/style.css");if e!=nil{http.NotFound(w,r);return}
   w.Header().Set("Content-Type","text/css; charset=utf-8");w.Header().Set("Cache-Control","public, max-age=3600");_,_=w.Write(b);return
@@ -185,7 +190,8 @@ func(a *App) ServeHTTP(w http.ResponseWriter,r *http.Request){
   a.revoke(w,r);http.Redirect(w,r,"/login",http.StatusSeeOther);return
  }
  if r.Method=="POST"&&(!sameOrigin(r)||!csrfEqual(s.CSRF,r.FormValue("csrf"))){http.Error(w,"forbidden",403);return}
- p:=page{Section:"home",Username:a.state.Username,CSRF:s.CSRF}
+ a.mu.Lock();currentUsername:=a.state.Username;a.mu.Unlock()
+ p:=page{Section:"home",Username:currentUsername,CSRF:s.CSRF}
  if path=="/users"||path=="/users/create"||path=="/users/disable"{p.Section="users"}
  if path=="/diagnostics"{p.Section="diagnostics"}
  if path=="/settings"||path=="/settings/start"||path=="/settings/test"{p.Section="settings"}
