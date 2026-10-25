@@ -264,6 +264,7 @@ func main(){
   if !loopback(*listen)||!loopback(*adminAddr){log.Fatal("research v1 only accepts loopback listeners")}
   s,e:=load(*db);if e!=nil{log.Fatal(e)}
   mgr:=newGatewayManager(s,*db)
+  if e:=mgr.Boot();e!=nil{event("error","gateway","restore_failed","startup_error")}
   panel,e:=newDashboard(*adminAddr,*db+".admin.json",*logFile,s,mgr);if e!=nil{log.Fatal("dashboard initialization failed: ",e)}
   errCh:=make(chan error,1)
   go func(){event("info","dashboard","listener_starting","ok");errCh<-panel.ListenAndServe(*adminAddr)}()
