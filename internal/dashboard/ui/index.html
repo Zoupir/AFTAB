@@ -68,32 +68,7 @@
   </div>
   <div class="panel"><h2>{{tr "privacy"}}</h2><p class="muted">{{tr "privacyHelp"}}</p><p class="fine">{{tr "warning"}}</p></div>
   {{end}}
-  {{if eq .Section "users"}}
-  <div class="eyebrow">AFTAB / USERS</div><h1>{{tr "accounts"}}</h1>
-  <div class="panel">
-   <h2>{{tr "newUser"}}</h2>
-   <form class="userForm" method="post" action="/users/create">
-    <input type="hidden" name="csrf" value="{{.CSRF}}">
-    <label>{{tr "accountName"}}<input name="name" pattern="[A-Za-z0-9._-]{1,80}" required maxlength="80" autocomplete="off"></label>
-    <label>{{tr "days"}}<input name="days" type="number" min="1" max="3650" value="30" required></label>
-    <label>{{tr "quota"}}<input name="gb" type="number" min="1" max="100000" value="30" required></label>
-    <button type="submit" class="primary">{{tr "create"}}</button>
-   </form>
-   {{if .CreatedToken}}
-   <div class="alert success"><strong>{{tr "created"}}: {{.CreatedName}}</strong><p>{{tr "once"}}</p><code class="oneTime">{{.CreatedToken}}</code></div>
-   {{end}}
-  </div>
-  <div class="panel"><h2>{{tr "userList"}}</h2>
-   {{if .Users}}
-   <div class="tablewrap"><table><thead><tr><th>{{tr "accountName"}}</th><th>{{tr "expiry"}}</th><th>{{tr "used"}}</th><th>{{tr "state"}}</th><th></th></tr></thead>
-   <tbody>{{range .Users}}<tr>
-    <td class="mono">{{.Name}}</td><td class="mono">{{.Expires}}</td><td class="mono">{{gib .UsedBytes}} / {{gib .QuotaBytes}}</td>
-    <td>{{if .Disabled}}<span class="tag bad">{{tr "inactive"}}</span>{{else}}<span class="tag good">{{tr "active"}}</span>{{end}}</td>
-    <td>{{if not .Disabled}}<form method="post" action="/users/disable"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="name" value="{{.Name}}"><button class="quiet" type="submit">{{tr "disable"}}</button></form>{{end}}</td>
-   </tr>{{end}}</tbody></table></div>
-   {{else}}<p class="muted">{{tr "emptyUsers"}}</p>{{end}}
-  </div>
-  {{end}}
+  {{if eq .Section "users"}}{{template "users" .}}{{end}}
   {{if eq .Section "account"}}
   <div class="eyebrow">AFTAB / ADMINISTRATOR</div><h1>{{tr "account"}}</h1>
   <div class="panel"><h2>{{tr "changePassword"}}</h2><p class="muted">{{tr "passwordHelp"}}</p>
