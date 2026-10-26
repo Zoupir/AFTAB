@@ -88,9 +88,6 @@ func TestSubscriptionGatesAndURIFormats(t *testing.T){
   PublicKey:base64.RawURLEncoding.EncodeToString(make([]byte,32)),ShortID:"0a12",
  }
  admin:=strings.Repeat("S",64)
- s,e:=db.Create(ctx,"friend-win","windows",30,5)
- _=s
- _=e
  acc,token,e:=db.Create(ctx,"friend-android","android",30,5)
  if e!=nil{t.Fatal(e)}
  h:=&api{users:db,adminToken:admin,node:&node,agent:&agenthttp.LocalClient{}}
