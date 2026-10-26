@@ -299,6 +299,7 @@ func main(){
  db:=flag.String("db","./aftab-users.json","user store")
  config:=flag.String("config","","client JSON config")
  watchPid:=flag.Int("watch-pid",0,"internal Windows proxy watchdog parent process ID")
+ watchGeneration:=flag.String("watch-generation","","internal Windows proxy recovery generation")
  logLevel:=flag.String("log-level","info","debug, info, warn or error")
  logFile:=flag.String("log-file","","path to newline-delimited JSON diagnostic logs; default stderr")
  flag.Parse()
@@ -316,8 +317,8 @@ func main(){
  event("info","process","starting","ok","mode",*mode)
  switch *mode{
  case "proxy-watchdog":
-  if *config==""||*watchPid<=0{log.Fatal("invalid Windows proxy watchdog arguments")}
-  if e:=runSystemProxyWatchdog(*watchPid,*config+".system-proxy-backup");e!=nil{log.Fatal(e)}
+  if *config==""||*watchPid<=0||len(*watchGeneration)!=64{log.Fatal("invalid Windows proxy watchdog arguments")}
+  if e:=runSystemProxyWatchdog(*watchPid,*config+".system-proxy-backup",*watchGeneration);e!=nil{log.Fatal(e)}
  case "server":
   if *listen==""{*listen="127.0.0.1:18443"}
   if !loopback(*listen)||!loopback(*adminAddr){log.Fatal("research v1 only accepts loopback listeners")}
