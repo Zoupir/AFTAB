@@ -32,7 +32,7 @@ func TestControlPlaneAPISecureLifecycle(t *testing.T){
  if r.Code!=201{t.Fatalf("create: %d %s",r.Code,r.Body.String())}
  var created struct{Account controlplane.Account `json:"account"`;SubscriptionToken string `json:"subscription_token_once"`;Provisioning string `json:"provisioning"`}
  if e:=json.Unmarshal(r.Body.Bytes(),&created);e!=nil{t.Fatal(e)}
- if len(created.SubscriptionToken)!=64||created.Provisioning!="pending_engine_integration"{t.Fatal("incorrect pending provisioning response")}
+ if len(created.SubscriptionToken)!=64||created.Provisioning!="pending_agent_configuration"{t.Fatal("incorrect pending provisioning response")}
  r=request(t,handler,"GET","/api/v1/users",nil,true)
  if r.Code!=200||strings.Contains(r.Body.String(),created.SubscriptionToken){t.Fatal("subscription token appeared in user listing")}
  r=request(t,handler,"POST","/api/v1/users",payload,true)
