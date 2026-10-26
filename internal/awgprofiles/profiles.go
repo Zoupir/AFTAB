@@ -84,8 +84,16 @@ func(d Device)validate()error{
  if !safeLabel.MatchString(d.Label){return errors.New("invalid device label")}
  if e:=parseKey(d.PrivateKey);e!=nil{return e}
  if e:=parseKey(d.PublicKey);e!=nil{return e}
+ raw,_:=base64.StdEncoding.DecodeString(d.PrivateKey)
+ priv,e:=ecdh.X25519().NewPrivateKey(raw)
+ if e!=nil{return errors.New("invalid private peer key")}
+ actual:=base64.StdEncoding.EncodeToString(priv.PublicKey().Bytes())
+ if actual!=d.PublicKey{return errors.New("peer keypair mismatch")}
  ip,network,e:=net.ParseCIDR(d.IPv4)
- if e!=nil||ip.To4()==nil||network.String()=="0.0.0.0/0"{return errors.New("invalid peer subnet")}
+ if e!=nil{return errors.New("invalid peer subnet")}
+ ip4:=ip.To4()
+ ones,bits:=network.Mask.Size()
+ if ip4==nil||ones!=32||bits!=32||ip4[0]!=10||ip4[1]!=96||ip4[2]!=0||ip4[3]<2||ip4[3]>254{return errors.New("invalid assigned peer /32")}
  return nil
 }
 func maskLines(m Mask)string {
