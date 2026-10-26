@@ -94,7 +94,10 @@ func (c Client) UserTraffic(ctx context.Context, id string) (metering.Counters, 
 			seenDown = true
 		}
 	}
-	// No entries is expected for a new idle account. The Xray node
+	if err := validateTrafficCompleteness(seenUp, seenDown); err != nil {
+		return metering.Counters{}, err
+	}
+	// Missing entries are now rejected, including on new idle accounts. The Xray node
 	// configuration MUST explicitly enable stats and policy, otherwise samples
 	// will all stay zero; validate these settings during node provisioning.
 	return out, nil

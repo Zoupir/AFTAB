@@ -33,7 +33,7 @@ func (s *Store) EnsureMeteringSchema(ctx context.Context) error {
 }
 
 func (s *Store) ActiveAccounts(ctx context.Context) ([]metering.ManagedAccount, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id,quota_bytes,used_bytes,expires_at,disabled,provisioned
+	rows, err := s.db.QueryContext(ctx, `SELECT id,uuid,quota_bytes,used_bytes,expires_at,disabled,provisioned
         FROM accounts WHERE disabled=0 AND provisioned=1 ORDER BY id`)
 	if err != nil {
 		return nil, err
@@ -44,7 +44,7 @@ func (s *Store) ActiveAccounts(ctx context.Context) ([]metering.ManagedAccount, 
 		var a metering.ManagedAccount
 		var expiry string
 		var disabled, provisioned int
-		if err := rows.Scan(&a.ID, &a.QuotaBytes, &a.UsedBytes, &expiry, &disabled, &provisioned); err != nil {
+		if err := rows.Scan(&a.ID, &a.UUID, &a.QuotaBytes, &a.UsedBytes, &expiry, &disabled, &provisioned); err != nil {
 			return nil, err
 		}
 		a.ExpiresAt, err = time.Parse(time.RFC3339, expiry)

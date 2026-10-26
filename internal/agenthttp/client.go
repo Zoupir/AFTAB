@@ -1,18 +1,13 @@
 package agenthttp
 
-// LocalClient is the panel-side API for a separately managed AFTAB agent.
-// Authentication is a scoped bearer secret, and transport is loopback only.
-// Multi-node remote transport requires mutual TLS and separate authorization.
 import (
 	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
-	"time"
 )
 
 type LocalClient struct {
@@ -41,18 +36,20 @@ func (c LocalClient) post(ctx context.Context, path string, payload any) error {
 	}
 	req.Header.Set("Authorization", "Bearer "+c.Token)
 	req.Header.Set("Content-Type", "application/json")
-	client := c.HTTP
-	if client == nil {
-		client = &http.Client{Timeout: 7 * time.Second}
-	}
-	resp, e := client.Do(req)
+	resp, e := safeAgentClient(c.HTTP).Do(req)
 	if e != nil {
 		return errors.New("agent_connection_unavailable")
 	}
 	defer resp.Body.Close()
-	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1024))
 	if resp.StatusCode != 200 {
 		return fmt.Errorf("agent_rejected_operation_http_%d", resp.StatusCode)
+	}
+	expected := "provisioned"
+	if strings.HasSuffix(path, "/disable") {
+		expected = "removed"
+	}
+	if e := parseAck(resp.Body, expected); e != nil {
+		return fmt.Errorf("agent ack invalid: %w", e)
 	}
 	return nil
 }

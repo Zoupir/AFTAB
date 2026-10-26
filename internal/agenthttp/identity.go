@@ -1,16 +1,11 @@
 package agenthttp
 
-// The panel uses this query to verify recovery and revocation against live
-// Xray state, instead of treating an accepted write as proof of its effect.
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
-	"time"
 )
 
 type IdentityEngine interface {
@@ -29,11 +24,7 @@ func (c LocalClient) GetUserUUID(ctx context.Context, id string) (string, bool, 
 		return "", false, e
 	}
 	req.Header.Set("Authorization", "Bearer "+c.Token)
-	client := c.HTTP
-	if client == nil {
-		client = &http.Client{Timeout: 7 * time.Second}
-	}
-	resp, e := client.Do(req)
+	resp, e := safeAgentClient(c.HTTP).Do(req)
 	if e != nil {
 		return "", false, errors.New("identity agent unavailable")
 	}
@@ -41,17 +32,9 @@ func (c LocalClient) GetUserUUID(ctx context.Context, id string) (string, bool, 
 	if resp.StatusCode != http.StatusOK {
 		return "", false, fmt.Errorf("identity agent HTTP %d", resp.StatusCode)
 	}
-	var payload struct {
-		UUID  string `json:"uuid"`
-		Found bool   `json:"found"`
+	uuid, found, e := parseIdentity(resp.Body)
+	if e != nil {
+		return "", false, fmt.Errorf("invalid agent identity response: %w", e)
 	}
-	d := json.NewDecoder(io.LimitReader(resp.Body, 4096))
-	d.DisallowUnknownFields()
-	if e := d.Decode(&payload); e != nil {
-		return "", false, e
-	}
-	if payload.Found && len(payload.UUID) != 36 {
-		return "", false, errors.New("invalid engine identity response")
-	}
-	return payload.UUID, payload.Found, nil
+	return uuid, found, nil
 }
