@@ -13,6 +13,14 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.23'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Build offline-ready React control panel assets
+        run: |
+          cd web
+          npm install --no-audit --no-fund
+          npm run build
       - name: Resolve audited Go module checksums
         run: go mod tidy
       - name: Format Go sources for deterministic test/build
@@ -25,6 +33,8 @@ jobs:
         run: |
           mkdir -p dist
           CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o dist/aftab-linux-amd64 ./cmd/aftab
+      - name: Isolated AFTAB panel preview
+        run: CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o dist/aftab-panel-linux-amd64 ./cmd/panel
       - name: Windows graphical executable
         run: CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags="-H=windowsgui -s -w" -o dist/aftab-windows-amd64.exe ./cmd/aftab
       - name: Create Debian service package
@@ -53,7 +63,9 @@ jobs:
       - name: Portable Linux package
         run: tar -czf dist/aftab-linux-portable.tar.gz -C "$GITHUB_WORKSPACE/dist" aftab-linux-amd64 -C "$GITHUB_WORKSPACE/packaging" aftab-server.service
       - name: Checksum manifest
-        run: cd dist && sha256sum aftab-linux-amd64 aftab-windows-amd64.exe aftab-server-amd64.deb aftab-windows-portable.zip aftab-linux-portable.tar.gz > SHA256SUMS.txt
+        run: cd dist && sha256sum aftab-linux-amd64 aftab-panel-linux-amd64 aftab-windows-amd64.exe aftab-server-amd64.deb aftab-windows-portable.zip aftab-linux-portable.tar.gz > SHA256SUMS.txt
+      - name: Export reproducible Go and Node dependency lockfiles
+        run: cp go.sum web/package-lock.json dist/
       - name: Upload Linux Windows and Debian artifacts
         uses: actions/upload-artifact@v4
         with:
