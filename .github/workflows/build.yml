@@ -70,6 +70,8 @@ jobs:
         run: tar -czf dist/aftab-linux-portable.tar.gz -C "$GITHUB_WORKSPACE/dist" aftab-linux-amd64 -C "$GITHUB_WORKSPACE/packaging" aftab-server.service
       - name: Checksum manifest
         run: cd dist && sha256sum aftab-linux-amd64 aftab-panel-linux-amd64 aftab-agent-linux-amd64 aftab-windows-amd64.exe aftab-server-amd64.deb aftab-windows-portable.zip aftab-linux-portable.tar.gz > SHA256SUMS.txt
+      - name: Run isolated AFTAB staging startup smoke tests
+        run: python3 labs/staging/run_staging.py --artifacts dist --output dist/staging-smoke-report.json
       - name: Export reproducible Go and Node dependency lockfiles
         run: cp go.sum web/package-lock.json dist/
       - name: Upload Linux Windows and Debian artifacts
