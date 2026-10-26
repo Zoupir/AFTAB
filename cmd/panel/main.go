@@ -2,6 +2,7 @@ package main
 
 import (
  "crypto/subtle"
+ "encoding/base64"
  "embed"
  "encoding/json"
  "errors"
@@ -17,6 +18,7 @@ import (
  "time"
 
  "github.com/Zoupir/AFTAB/internal/controlplane"
+ "github.com/Zoupir/AFTAB/internal/subscription"
  "github.com/Zoupir/AFTAB/internal/agenthttp"
 )
 
@@ -27,6 +29,7 @@ type api struct{
  users *controlplane.Store
  adminToken string
  agent *agenthttp.LocalClient
+ node *subscription.RealityNode
 }
 func forbidden(w http.ResponseWriter,status int,reason string){
  w.Header().Set("Content-Type","application/json; charset=utf-8")
@@ -78,12 +81,17 @@ func (a *api)ServeHTTP(w http.ResponseWriter,r *http.Request){
       }
      }else{provisionState="agent_registration_failed"}
     }
+    uri:=""
+    if acc.Provisioned&&a.node!=nil{
+     uri,_=subscription.VLESSURI(*a.node,acc.UUID)
+    }
     w.WriteHeader(http.StatusCreated)
     _=json.NewEncoder(w).Encode(struct{
      Account controlplane.Account `json:"account"`
      SubscriptionToken string `json:"subscription_token_once"`
      Provisioning string `json:"provisioning"`
-    }{acc,token,provisionState})
+     VLESS string `json:"vless_uri,omitempty"`
+    }{acc,token,provisionState,uri})
     return
    }
    w.Header().Set("Allow","GET, POST")
@@ -107,9 +115,24 @@ func (a *api)ServeHTTP(w http.ResponseWriter,r *http.Request){
   forbidden(w,404,"not_found");return
  }
  if strings.HasPrefix(r.URL.Path,"/s/"){
-  // Do not issue false-positive client profiles before a real Xray peer is
-  // provisioned and confirmed. This will be wired into the agent in phase 1.
-  forbidden(w,http.StatusServiceUnavailable,"xray_node_not_provisioned");return
+  if r.Method!="GET"{forbidden(w,405,"method_not_allowed");return}
+  token:=strings.TrimPrefix(r.URL.Path,"/s/")
+  if a.node==nil||a.agent==nil{
+   forbidden(w,503,"subscription_service_not_configured");return
+  }
+  acc,e:=a.users.LookupSubscription(r.Context(),token)
+  if e!=nil{forbidden(w,404,"subscription_not_found");return}
+  uri,e:=subscription.VLESSURI(*a.node,acc.UUID)
+  if e!=nil{forbidden(w,503,"invalid_server_profile");return}
+  format:=r.URL.Query().Get("format")
+  w.Header().Set("Content-Type","text/plain; charset=utf-8")
+  w.Header().Set("Cache-Control","private, no-store")
+  switch format{
+  case "", "uri":_,_=io.WriteString(w,uri+"\\n")
+  case "base64":_,_=io.WriteString(w,base64.StdEncoding.EncodeToString([]byte(uri+"\\n")))
+  default:forbidden(w,400,"unsupported_subscription_format")
+  }
+  return
  }
  if r.Method!="GET"&&r.Method!="HEAD"{forbidden(w,405,"method_not_allowed");return}
  name:=strings.TrimPrefix(r.URL.Path,"/")
@@ -141,7 +164,14 @@ func main(){
   if e:=agenthttp.ValidateLocalClient(candidate);e!=nil{log.Fatal(e)}
   agent=&candidate
  }
- srv:=&http.Server{Addr:*addr,Handler:&api{users:s,adminToken:secret,agent:agent},ReadHeaderTimeout:5*time.Second,ReadTimeout:10*time.Second,WriteTimeout:15*time.Second,IdleTimeout:45*time.Second,MaxHeaderBytes:16384}
+ var node *subscription.RealityNode
+ if v:=os.Getenv("AFTAB_REALITY_NODE_JSON");v!=""{
+  var current subscription.RealityNode
+  if e:=json.Unmarshal([]byte(v),&current);e!=nil{log.Fatal("invalid AFTAB_REALITY_NODE_JSON")}
+  if e:=current.Validate();e!=nil{log.Fatal("invalid AFTAB REALITY node settings: ",e)}
+  node=&current
+ }
+ srv:=&http.Server{Addr:*addr,Handler:&api{users:s,adminToken:secret,agent:agent,node:node},ReadHeaderTimeout:5*time.Second,ReadTimeout:10*time.Second,WriteTimeout:15*time.Second,IdleTimeout:45*time.Second,MaxHeaderBytes:16384}
  fmt.Printf("AFTAB next control plane preview: http://%s (loopback only; engine provisioning via agent)\n",*addr)
  log.Fatal(srv.ListenAndServe())
 }
