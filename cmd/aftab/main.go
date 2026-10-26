@@ -36,6 +36,7 @@ func event(level, component, name, code string, fields ...any) {
 }
 
 type User struct {
+ DurationDays int `json:"duration_days,omitempty"`
  Name string `json:"name"`
  Token string `json:"token"`
  Expires string `json:"expires"`
@@ -44,7 +45,7 @@ type User struct {
  Disabled bool `json:"disabled"`
 }
 type database struct {AdminToken string `json:"admin_token"`; Users map[string]*User `json:"users"`}
-type store struct {mu sync.Mutex; path string; db database; pendingBytes int64; lastSave time.Time}
+type store struct {mu sync.Mutex; path string; db database; pendingBytes int64; lastSave time.Time; live map[string]map[net.Conn]struct{}}
 func newToken() string {b:=make([]byte,32);if _,e:=rand.Read(b);e!=nil{panic(e)};return hex.EncodeToString(b)}
 func tokenDigest(token string)string{
  d:=sha256.Sum256([]byte(token))
@@ -91,6 +92,24 @@ func(s *store)credit(id string,n int64){
  if n<=0{return};s.mu.Lock();defer s.mu.Unlock()
  if u:=s.db.Users[id];u!=nil{u.UsedBytes+=n;_ =s.save()}
 }
+// trackUserConn records established account sessions so disabling, deleting,
+ // or rotating an account credential terminates already-connected clients.
+func(s *store)trackUserConn(id string,c net.Conn)bool{
+ s.mu.Lock();defer s.mu.Unlock()
+ u:=s.db.Users[id];if u==nil||u.Disabled{return false}
+ if s.live==nil{s.live=make(map[string]map[net.Conn]struct{})}
+ if s.live[id]==nil{s.live[id]=make(map[net.Conn]struct{})}
+ s.live[id][c]=struct{}{}
+ return true
+}
+func(s *store)untrackUserConn(id string,c net.Conn){
+ s.mu.Lock();defer s.mu.Unlock()
+ if group:=s.live[id];group!=nil{delete(group,c);if len(group)==0{delete(s.live,id)}}
+}
+func(s *store)disconnectUserLocked(id string){
+ for conn:=range s.live[id]{_ =conn.Close()}
+ delete(s.live,id)
+}
 func loopback(addr string)bool{h,_,e:=net.SplitHostPort(addr);if e!=nil{return false};ip:=net.ParseIP(h);return ip!=nil&&ip.IsLoopback()}
 func gateway(addr,cert,key string,s *store)error{
  pair,e:=tls.LoadX509KeyPair(cert,key);if e!=nil{return e}
@@ -127,6 +146,8 @@ func serveGatewayManaged(ln net.Listener,s *store,public bool,tracked *gatewaySe
   r:=bufio.NewReaderSize(c,512)
   tokBytes,e:=r.ReadSlice('\n');if e!=nil||len(tokBytes)>128{return};tok:=string(tokBytes)
   id:=s.userFor(strings.TrimSpace(tok));if id==""{event("warn","gateway","connection_rejected","unauthorized");return}
+   if !s.trackUserConn(id,c){return}
+   defer s.untrackUserConn(id,c)
   hostBytes,e:=r.ReadSlice('\n');if e!=nil||len(hostBytes)>260{return};host:=strings.TrimSpace(string(hostBytes))
   pb:=make([]byte,2);if _,e=io.ReadFull(r,pb);e!=nil{return}
   port:=binary.BigEndian.Uint16(pb);if port==0||host==""{return}
