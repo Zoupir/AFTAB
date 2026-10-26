@@ -8,6 +8,7 @@ import (
  "encoding/hex"
  "errors"
  "fmt"
+ "os"
  "path/filepath"
  "regexp"
  "strings"
@@ -38,6 +39,11 @@ type Store struct{ db *sql.DB }
 func Open(path string)(*Store,error){
  if strings.TrimSpace(path)==""{return nil,errors.New("database path required")}
  absolute,e:=filepath.Abs(path);if e!=nil{return nil,e}
+ if e:=os.MkdirAll(filepath.Dir(absolute),0700);e!=nil{return nil,e}
+ // SQLite normally creates a DB using the caller's umask; fix its
+ // permissions before driver.Open so no account metadata is world-readable.
+ if f,createErr:=os.OpenFile(absolute,os.O_CREATE|os.O_EXCL|os.O_WRONLY,0600);createErr==nil{_=f.Close()}else if !errors.Is(createErr,os.ErrExist){return nil,createErr}
+ if e:=os.Chmod(absolute,0600);e!=nil{return nil,e}
  db,e:=sql.Open("sqlite",absolute);if e!=nil{return nil,e}
  db.SetMaxOpenConns(1)
  statements:=[]string{
