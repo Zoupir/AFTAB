@@ -5,6 +5,7 @@ import (
  "crypto/sha256"
  "encoding/hex"
  "encoding/json"
+ "fmt"
  "net/http"
  "net/http/httptest"
  "net/url"
@@ -24,6 +25,18 @@ func(b *fakeBackend)CreateUser(name string,days int,gb int64)(string,error){
 func(b *fakeBackend)DisableUser(name string)error{
  b.mu.Lock();defer b.mu.Unlock();u:=b.users[name];u.Disabled=true;b.users[name]=u;return nil
 }
+
+func(b *fakeBackend)SetUserEnabled(name string,enabled bool)error{
+ b.mu.Lock();defer b.mu.Unlock()
+ u,ok:=b.users[name];if !ok{return fmt.Errorf("missing account")}
+ u.Disabled=!enabled;b.users[name]=u;return nil
+}
+func(b *fakeBackend)UpdateUser(name,newName string,days int,gb int64)error{return nil}
+func(b *fakeBackend)ExtendUser(name string,days int,gb int64)error{return nil}
+func(b *fakeBackend)ResetUsage(name string)error{return nil}
+func(b *fakeBackend)ResetTime(name string)error{return nil}
+func(b *fakeBackend)DeleteUser(name string)error{return nil}
+func(b *fakeBackend)RotateToken(name string)(string,error){return "replacement-token",nil}
 func request(method,path,form string,cookies ...*http.Cookie)*http.Request{
  r:=httptest.NewRequest(method,path,strings.NewReader(form));r.RemoteAddr="127.0.0.1:12345"
  r.Header.Set("Content-Type","application/x-www-form-urlencoded")
