@@ -128,8 +128,8 @@ func (a *api)ServeHTTP(w http.ResponseWriter,r *http.Request){
   w.Header().Set("Content-Type","text/plain; charset=utf-8")
   w.Header().Set("Cache-Control","private, no-store")
   switch format{
-  case "", "uri":_,_=io.WriteString(w,uri+"\\n")
-  case "base64":_,_=io.WriteString(w,base64.StdEncoding.EncodeToString([]byte(uri+"\\n")))
+  case "", "uri":_,_=io.WriteString(w,uri+"\n")
+  case "base64":_,_=io.WriteString(w,base64.StdEncoding.EncodeToString([]byte(uri+"\n")))
   default:forbidden(w,400,"unsupported_subscription_format")
   }
   return
