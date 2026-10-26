@@ -172,7 +172,7 @@ func(a *App) render(w http.ResponseWriter,r *http.Request,p page){
  w.Header().Set("Cache-Control","no-store")
  p.Lang=a.language(w,r)
  p.Dir="ltr";if p.Lang=="fa"||p.Lang=="ar"{p.Dir="rtl"}
- t,e:=template.New("index.html").Funcs(template.FuncMap{"tr":func(k string)string{return translate(p.Lang,k)},"gib":func(n int64)string{return fmt.Sprintf("%.2f",float64(n)/1073741824)},"quotaGB":func(n int64)int64{return n/1073741824},"daysLeft":func(exp string)int{d,e:=time.Parse(time.RFC3339,exp);if e!=nil{return 30};n:=int(time.Until(d).Hours()/24)+1;if n<1{return 1};if n>3650{return 3650};return n}}).ParseFS(assets,"ui/index.html")
+ t,e:=template.New("index.html").Funcs(template.FuncMap{"tr":func(k string)string{return translate(p.Lang,k)},"gib":func(n int64)string{return fmt.Sprintf("%.2f",float64(n)/1073741824)},"quotaGB":func(n int64)int64{return n/1073741824},"daysLeft":func(exp string)int{d,e:=time.Parse(time.RFC3339,exp);if e!=nil{return 30};n:=int(time.Until(d).Hours()/24)+1;if n<1{return 1};if n>3650{return 3650};return n}}).ParseFS(assets,"ui/*.html")
  if e!=nil{http.Error(w,"template error",500);return}
  if e=t.Execute(w,p);e!=nil{a.emit("template_error","render_failed")}
 }
