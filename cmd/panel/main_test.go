@@ -7,12 +7,14 @@ import (
  "net/http/httptest"
  "path/filepath"
  "context"
+ "encoding/base64"
  "net/url"
  "strings"
  "testing"
 
  "github.com/Zoupir/AFTAB/internal/controlplane"
  "github.com/Zoupir/AFTAB/internal/agenthttp"
+ "github.com/Zoupir/AFTAB/internal/subscription"
 )
 
 func request(t *testing.T,handler http.Handler,method,path string,body []byte,authenticated bool)*httptest.ResponseRecorder{
@@ -75,4 +77,39 @@ func TestPanelProvisionsAndRevokesThroughAgent(t *testing.T){
  if r.Code!=200||engine.remove!=1{t.Fatalf("agent revocation failed: HTTP %d removal=%d",r.Code,engine.remove)}
  rows,e:=s.List(context.Background());if e!=nil{t.Fatal(e)}
  if !rows[0].Disabled{t.Fatal("database account remained active after engine revocation")}
+}
+
+func TestSubscriptionGatesAndURIFormats(t *testing.T){
+ db,e:=controlplane.Open(filepath.Join(t.TempDir(),"test-subs.sqlite"));if e!=nil{t.Fatal(e)}
+ defer db.Close()
+ ctx:=context.Background()
+ node:=subscription.RealityNode{
+  Name:"lab",Address:"203.0.113.10",Port:443,ServerName:"www.microsoft.com",
+  PublicKey:base64.RawURLEncoding.EncodeToString(make([]byte,32)),ShortID:"0a12",
+ }
+ admin:=strings.Repeat("S",64)
+ s,e:=db.Create(ctx,"friend-win","windows",30,5)
+ _=s
+ _=e
+ acc,token,e:=db.Create(ctx,"friend-android","android",30,5)
+ if e!=nil{t.Fatal(e)}
+ h:=&api{users:db,adminToken:admin,node:&node,agent:&agenthttp.LocalClient{}}
+ r:=request(t,h,"GET","/s/"+token,nil,false)
+ if r.Code!=404{t.Fatalf("unprovisioned account leaked profile: %d",r.Code)}
+ if e:=db.MarkProvisioned(ctx,acc.ID);e!=nil{t.Fatal(e)}
+ r=request(t,h,"GET","/s/"+token,nil,false)
+ if r.Code!=200||!strings.Contains(r.Body.String(),"vless://")||!strings.Contains(r.Body.String(),"security=reality"){
+  t.Fatalf("invalid URI subscription: %d %s",r.Code,r.Body.String())
+ }
+ if r.Header().Get("Cache-Control")!="private, no-store"{t.Fatal("subscription was cacheable")}
+ expected:=r.Body.String()
+ r=request(t,h,"GET","/s/"+token+"?format=base64",nil,false)
+ if r.Code!=200{t.Fatalf("base64 response %d",r.Code)}
+ decoded,e:=base64.StdEncoding.DecodeString(r.Body.String())
+ if e!=nil||string(decoded)!=expected{t.Fatalf("invalid base64 subscription: %s",r.Body.String())}
+ r=request(t,h,"GET","/s/"+strings.Repeat("a",64),nil,false)
+ if r.Code!=404{t.Fatal("unrecognized token was accepted")}
+ if e:=db.Disable(ctx,acc.ID);e!=nil{t.Fatal(e)}
+ r=request(t,h,"GET","/s/"+token,nil,false)
+ if r.Code!=404{t.Fatal("revoked account subscription remained active")}
 }
