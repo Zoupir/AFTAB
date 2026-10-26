@@ -33,6 +33,7 @@ type Account struct {
  UsedBytes int64 `json:"used_bytes"`
  ExpiresAt string `json:"expires_at"`
  Disabled bool `json:"disabled"`
+ Provisioned bool `json:"provisioned"`
  CreatedAt string `json:"created_at"`
 }
 type Store struct{ db *sql.DB }
@@ -55,13 +56,16 @@ func Open(path string)(*Store,error){
      uuid TEXT NOT NULL UNIQUE, subscription_hash TEXT NOT NULL UNIQUE,
      quota_bytes INTEGER NOT NULL, used_bytes INTEGER NOT NULL DEFAULT 0,
      expires_at TEXT NOT NULL, disabled INTEGER NOT NULL DEFAULT 0,
-     created_at TEXT NOT NULL
+     created_at TEXT NOT NULL,
+     provisioned INTEGER NOT NULL DEFAULT 0
    )`,
   "CREATE INDEX IF NOT EXISTS accounts_expires_idx ON accounts(expires_at)",
  }
  for _,q:=range statements{
   if _,e=db.Exec(q);e!=nil{_=db.Close();return nil,fmt.Errorf("sqlite migration: %w",e)}
  }
+ // Upgrade account databases created by the initial React preview.
+ if _,e=db.Exec("ALTER TABLE accounts ADD COLUMN provisioned INTEGER NOT NULL DEFAULT 0");e!=nil&&!strings.Contains(strings.ToLower(e.Error()),"duplicate column"){_=db.Close();return nil,fmt.Errorf("sqlite migration provisioned: %w",e)}
  return &Store{db:db},nil
 }
 func(s *Store)Close()error{return s.db.Close()}
@@ -87,11 +91,11 @@ func(s *Store)Create(ctx context.Context,name,device string,days int,gb int64)(A
  return a,token,nil
 }
 func scanAccount(scanner interface{Scan(...any)error})(Account,error){
- var a Account;var disabled int
- e:=scanner.Scan(&a.ID,&a.Name,&a.Device,&a.UUID,&a.QuotaBytes,&a.UsedBytes,&a.ExpiresAt,&disabled,&a.CreatedAt)
- a.Disabled=disabled!=0;return a,e
+ var a Account;var disabled,provisioned int
+ e:=scanner.Scan(&a.ID,&a.Name,&a.Device,&a.UUID,&a.QuotaBytes,&a.UsedBytes,&a.ExpiresAt,&disabled,&a.CreatedAt,&provisioned)
+ a.Disabled=disabled!=0;a.Provisioned=provisioned!=0;return a,e
 }
-const fields="id,name,device,uuid,quota_bytes,used_bytes,expires_at,disabled,created_at"
+const fields="id,name,device,uuid,quota_bytes,used_bytes,expires_at,disabled,created_at,provisioned"
 func(s *Store)List(ctx context.Context)([]Account,error){
  rows,e:=s.db.QueryContext(ctx,"SELECT "+fields+" FROM accounts ORDER BY created_at DESC,name ASC")
  if e!=nil{return nil,e}
@@ -99,6 +103,17 @@ func(s *Store)List(ctx context.Context)([]Account,error){
  accounts:=[]Account{}
  for rows.Next(){a,e:=scanAccount(rows);if e!=nil{return nil,e};accounts=append(accounts,a)}
  return accounts,rows.Err()
+}
+func(s *Store)MarkProvisioned(ctx context.Context,id string)error{
+ r,e:=s.db.ExecContext(ctx,"UPDATE accounts SET provisioned=1 WHERE id=? AND disabled=0",id)
+ if e!=nil{return e}
+ n,e:=r.RowsAffected();if e!=nil{return e};if n==0{return ErrMissing}
+ return nil
+}
+func(s *Store)Get(ctx context.Context,id string)(Account,error){
+ a,e:=scanAccount(s.db.QueryRowContext(ctx,"SELECT "+fields+" FROM accounts WHERE id=?",id))
+ if errors.Is(e,sql.ErrNoRows){return Account{},ErrMissing}
+ return a,e
 }
 func(s *Store)Disable(ctx context.Context,id string)error{
  r,e:=s.db.ExecContext(ctx,"UPDATE accounts SET disabled=1 WHERE id=?",id)
@@ -112,7 +127,7 @@ func(s *Store)LookupSubscription(ctx context.Context,token string)(Account,error
  if errors.Is(e,sql.ErrNoRows){return Account{},ErrMissing}
  if e!=nil{return Account{},e}
  expiry,e:=time.Parse(time.RFC3339,a.ExpiresAt)
- if e!=nil||a.Disabled||!expiry.After(time.Now().UTC())||a.UsedBytes>=a.QuotaBytes{return Account{},ErrInactive}
+ if e!=nil||a.Disabled||!a.Provisioned||!expiry.After(time.Now().UTC())||a.UsedBytes>=a.QuotaBytes{return Account{},ErrInactive}
  return a,nil
 }
 func(s *Store)SetUsage(ctx context.Context,id string,used int64)error{
