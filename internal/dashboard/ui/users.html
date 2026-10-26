@@ -19,12 +19,14 @@
     <button type="button" class="primary" id="copy-profile">{{tr "copyProfile"}}</button>
     <button type="button" class="quiet" id="copy-token">{{tr "copyToken"}}</button>
    </div>
-   <div class="qrWrap"><div id="aftab-qr" data-profile="{{.ShareURI}}" aria-label="QR connection profile"></div><p class="fine">{{tr "qrHint"}}</p></div>
+   <textarea id="aftab-profile-uri" hidden readonly>{{.ShareURI}}</textarea>
+   <div class="qrWrap"><div id="aftab-qr" aria-label="QR connection profile"></div><p class="fine">{{tr "qrHint"}}</p></div>
    <script src="/assets/qrcode.min.js"></script>
    <script>
    (function(){
     var qr=document.getElementById('aftab-qr'),text=document.getElementById('aftab-share-text');
-    if(qr&&qr.dataset.profile&&typeof QRCode!=='undefined') new QRCode(qr,{text:qr.dataset.profile,width:220,height:220,correctLevel:QRCode.CorrectLevel.L});
+    var uri=document.getElementById('aftab-profile-uri');
+    if(qr&&uri&&uri.value&&typeof QRCode!=='undefined') new QRCode(qr,{text:uri.value,width:220,height:220,correctLevel:QRCode.CorrectLevel.L});
     function copy(value){if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(value);}else{window.prompt('Copy:',value);}}
     document.getElementById('copy-profile').addEventListener('click',function(){copy(text.value);});
     document.getElementById('copy-token').addEventListener('click',function(){copy(document.getElementById('aftab-once-token').textContent.trim());});
