@@ -45,14 +45,14 @@ func TestAccountLifecycleAndNoTokenDisclosure(t *testing.T){
 func TestDisablingAndRotatingDisconnectsActiveAccount(t *testing.T){
  s,e:=load(filepath.Join(t.TempDir(),"users.json"));if e!=nil{t.Fatal(e)}
  b:=accountBackend{s:s}
- if _,e=b.CreateUser("u1",30,30);e!=nil{t.Fatal(e)}
+ token,e:=b.CreateUser("u1",30,30);if e!=nil{t.Fatal(e)}
  a,peer:=net.Pipe();defer peer.Close()
- if !s.trackUserConn("u1",a){t.Fatal("could not track client")}
+ if !s.trackUserConn("u1",token,a){t.Fatal("could not track client")}
  if e=b.SetUserEnabled("u1",false);e!=nil{t.Fatal(e)}
  if _,e=peer.Write([]byte("hello"));e==nil{t.Fatal("disabled account connection remained open")}
  if e=b.SetUserEnabled("u1",true);e!=nil{t.Fatal(e)}
  other,peer2:=net.Pipe();defer peer2.Close()
- if !s.trackUserConn("u1",other){t.Fatal("could not track second client")}
+ if !s.trackUserConn("u1",token,other){t.Fatal("could not track second client")}
  if _,e=b.RotateToken("u1");e!=nil{t.Fatal(e)}
  if _,e=peer2.Write([]byte("hello"));e==nil{t.Fatal("rotated account kept an active connection")}
 }
