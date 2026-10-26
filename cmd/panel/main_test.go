@@ -43,7 +43,7 @@ func TestControlPlaneAPISecureLifecycle(t *testing.T){
  r=request(t,handler,"POST","/api/v1/users",payload,true)
  if r.Code!=409{t.Fatalf("duplicate account not rejected: %d",r.Code)}
  r=request(t,handler,"GET","/s/"+created.SubscriptionToken,nil,false)
- if r.Code!=503||!strings.Contains(r.Body.String(),"not_provisioned"){t.Fatalf("issued invalid unprovisioned subscription: %d",r.Code)}
+ if r.Code!=503||!strings.Contains(r.Body.String(),"not_configured"){t.Fatalf("issued invalid unprovisioned subscription: %d",r.Code)}
  r=request(t,handler,"POST","/api/v1/users/"+created.Account.ID+"/disable",nil,true)
  if r.Code!=200{t.Fatalf("disable failed: %d",r.Code)}
  if r:=request(t,handler,"GET","/health",nil,false);r.Code!=200{t.Fatalf("health failed: %d",r.Code)}
