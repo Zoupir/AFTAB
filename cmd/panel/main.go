@@ -17,6 +17,7 @@ import (
  "time"
 
  "github.com/Zoupir/AFTAB/internal/controlplane"
+ "github.com/Zoupir/AFTAB/internal/agenthttp"
 )
 
 //go:embed ui-dist/*
@@ -25,6 +26,7 @@ var ui embed.FS
 type api struct{
  users *controlplane.Store
  adminToken string
+ agent *agenthttp.LocalClient
 }
 func forbidden(w http.ResponseWriter,status int,reason string){
  w.Header().Set("Content-Type","application/json; charset=utf-8")
@@ -43,7 +45,7 @@ func (a *api)ServeHTTP(w http.ResponseWriter,r *http.Request){
  w.Header().Set("Content-Security-Policy","default-src 'self'; base-uri 'none'; frame-ancestors 'none'; object-src 'none'; connect-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'")
  if r.URL.Path=="/health"&&r.Method=="GET"{
   w.Header().Set("Content-Type","application/json")
-  _,_=io.WriteString(w,`{"status":"ok","engine":"not-provisioned"}`)
+  _,_=io.WriteString(w,`{"status":"ok","engine":"isolated-agent-optional"}`)
   return
  }
  if r.URL.Path=="/api/v1/users"||r.URL.Path=="/api/v1/users/"||strings.HasPrefix(r.URL.Path,"/api/v1/users/"){
@@ -64,12 +66,24 @@ func (a *api)ServeHTTP(w http.ResponseWriter,r *http.Request){
     acc,token,e:=a.users.Create(r.Context(),in.Name,in.Device,in.Days,in.GB)
     if errors.Is(e,controlplane.ErrExists){forbidden(w,409,"account_exists");return}
     if e!=nil{forbidden(w,400,"invalid_account");return}
+    provisionState:="pending_agent_configuration"
+    if a.agent!=nil{
+     if e=a.agent.AddUser(r.Context(),acc.ID,acc.UUID);e==nil{
+      if e=a.users.MarkProvisioned(r.Context(),acc.ID);e==nil{
+       acc.Provisioned=true
+       provisionState="registered_by_agent"
+      }else{
+       _=a.agent.RemoveUser(r.Context(),acc.ID)
+       provisionState="database_provisioning_failed"
+      }
+     }else{provisionState="agent_registration_failed"}
+    }
     w.WriteHeader(http.StatusCreated)
     _=json.NewEncoder(w).Encode(struct{
      Account controlplane.Account `json:"account"`
      SubscriptionToken string `json:"subscription_token_once"`
      Provisioning string `json:"provisioning"`
-    }{acc,token,"pending_engine_integration"})
+    }{acc,token,provisionState})
     return
    }
    w.Header().Set("Allow","GET, POST")
@@ -78,6 +92,12 @@ func (a *api)ServeHTTP(w http.ResponseWriter,r *http.Request){
   if strings.HasSuffix(r.URL.Path,"/disable")&&r.Method=="POST"{
    id:=strings.TrimSuffix(strings.TrimPrefix(r.URL.Path,"/api/v1/users/"),"/disable")
    if len(id)!=36||strings.ContainsAny(id,"/\\"){forbidden(w,404,"not_found");return}
+   account,e:=a.users.Get(r.Context(),id)
+   if e!=nil{forbidden(w,404,"not_found");return}
+   if account.Provisioned{
+    if a.agent==nil{forbidden(w,503,"provisioned_account_requires_agent");return}
+    if e:=a.agent.RemoveUser(r.Context(),id);e!=nil{forbidden(w,503,"agent_revoke_failed");return}
+   }
    if e:=a.users.Disable(r.Context(),id);e!=nil{
     if errors.Is(e,controlplane.ErrMissing){forbidden(w,404,"not_found")}else{forbidden(w,500,"database_error")}
     return
@@ -115,7 +135,13 @@ func main(){
  if e:=os.MkdirAll(filepath.Dir(*dbpath),0700);e!=nil{log.Fatal(e)}
  s,e:=controlplane.Open(*dbpath);if e!=nil{log.Fatal(e)}
  defer s.Close()
- srv:=&http.Server{Addr:*addr,Handler:&api{users:s,adminToken:secret},ReadHeaderTimeout:5*time.Second,ReadTimeout:10*time.Second,WriteTimeout:15*time.Second,IdleTimeout:45*time.Second,MaxHeaderBytes:16384}
- fmt.Printf("AFTAB next control plane preview: http://%s (loopback only; engine not provisioned)\n",*addr)
+ var agent *agenthttp.LocalClient
+ if endpoint:=os.Getenv("AFTAB_AGENT_ADDR");endpoint!=""{
+  candidate:=agenthttp.LocalClient{Addr:endpoint,Token:os.Getenv("AFTAB_AGENT_TOKEN")}
+  if e:=agenthttp.ValidateLocalClient(candidate);e!=nil{log.Fatal(e)}
+  agent=&candidate
+ }
+ srv:=&http.Server{Addr:*addr,Handler:&api{users:s,adminToken:secret,agent:agent},ReadHeaderTimeout:5*time.Second,ReadTimeout:10*time.Second,WriteTimeout:15*time.Second,IdleTimeout:45*time.Second,MaxHeaderBytes:16384}
+ fmt.Printf("AFTAB next control plane preview: http://%s (loopback only; engine provisioning via agent)\n",*addr)
  log.Fatal(srv.ListenAndServe())
 }
