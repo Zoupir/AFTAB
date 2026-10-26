@@ -19,6 +19,7 @@ func TestAgentAuthAndDispatch(t *testing.T){
  u:="872e14a6-1433-4753-b8cb-f194629e158a"
  call:=func(method,path,body,token string)*httptest.ResponseRecorder{
   r:=httptest.NewRequest(method,path,strings.NewReader(body))
+  r.RemoteAddr="127.0.0.1:18888"
   if token!=""{r.Header.Set("Authorization","Bearer "+token)}
   w:=httptest.NewRecorder();h.ServeHTTP(w,r);return w
  }
