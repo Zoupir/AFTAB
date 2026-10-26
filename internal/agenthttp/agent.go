@@ -8,6 +8,7 @@ import (
  "crypto/subtle"
  "encoding/json"
  "errors"
+ "io"
  "net"
  "net/http"
  "strings"
@@ -48,7 +49,7 @@ func(h *Handler)ServeHTTP(w http.ResponseWriter,r *http.Request){
   var req struct{ID string `json:"id"`;UUID string `json:"uuid"`}
   dec:=json.NewDecoder(r.Body);dec.DisallowUnknownFields()
   if e:=dec.Decode(&req);e!=nil{output(w,400,map[string]string{"error":"invalid_request"});return}
-  if e:=dec.Decode(&struct{}{});!errors.Is(e,context.Canceled)&&e!=nil&&e.Error()!="EOF"{output(w,400,map[string]string{"error":"invalid_json"});return}
+  if e:=dec.Decode(&struct{}{});!errors.Is(e,io.EOF){output(w,400,map[string]string{"error":"invalid_json"});return}
   if e:=h.Engine.AddUser(ctx,req.ID,req.UUID);e!=nil{
    output(w,502,map[string]string{"error":"engine_add_failed"});return
   }
