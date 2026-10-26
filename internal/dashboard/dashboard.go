@@ -15,6 +15,7 @@ import (
  "io"
  "net"
  "net/http"
+ "net/url"
  "os"
  "path/filepath"
  "regexp"
@@ -33,11 +34,19 @@ type User struct {
  QuotaBytes int64
  UsedBytes int64
  Disabled bool
+ DurationDays int
 }
 type Backend interface {
  ListUsers() []User
  CreateUser(name string, days int, gb int64)(string,error)
  DisableUser(name string) error
+ SetUserEnabled(name string,enabled bool) error
+ UpdateUser(name,newName string,days int,gb int64) error
+ ExtendUser(name string,days int,gb int64) error
+ ResetUsage(name string) error
+ ResetTime(name string) error
+ DeleteUser(name string) error
+ RotateToken(name string)(string,error)
 }
 type GatewayStatus struct {Running, Public bool; Listen, Fingerprint, LastError string}
 type GatewayController interface {Status() GatewayStatus; Start(port int,public bool) error; Stop() error; Test() error}
@@ -145,7 +154,7 @@ func(a *App) revoke(w http.ResponseWriter,r *http.Request){
 func(a *App) installed()bool{a.mu.Lock();defer a.mu.Unlock();return a.state.Username!=""}
 type eventRow struct {Time,Level,Component,Event,Code string}
 type page struct{
- Lang,Dir,Section,CSRF,Username,Error,Notice,CreatedToken,CreatedName string
+ Lang,Dir,Section,CSRF,Username,Error,Notice,CreatedToken,CreatedName,ShareURI,ShareText string
  Users []User
  Events []eventRow
  Total,Active int
@@ -163,19 +172,23 @@ func(a *App) render(w http.ResponseWriter,r *http.Request,p page){
  w.Header().Set("Cache-Control","no-store")
  p.Lang=a.language(w,r)
  p.Dir="ltr";if p.Lang=="fa"||p.Lang=="ar"{p.Dir="rtl"}
- t,e:=template.New("index.html").Funcs(template.FuncMap{"tr":func(k string)string{return translate(p.Lang,k)},"gib":func(n int64)string{return fmt.Sprintf("%.2f",float64(n)/1073741824)}}).ParseFS(assets,"ui/index.html")
+ t,e:=template.New("index.html").Funcs(template.FuncMap{"tr":func(k string)string{return translate(p.Lang,k)},"gib":func(n int64)string{return fmt.Sprintf("%.2f",float64(n)/1073741824)},"quotaGB":func(n int64)int64{return n/1073741824},"daysLeft":func(exp string)int{d,e:=time.Parse(time.RFC3339,exp);if e!=nil{return 30};n:=int(time.Until(d).Hours()/24)+1;if n<1{return 1};if n>3650{return 3650};return n}}).ParseFS(assets,"ui/*.html")
  if e!=nil{http.Error(w,"template error",500);return}
  if e=t.Execute(w,p);e!=nil{a.emit("template_error","render_failed")}
 }
 func(a *App) ServeHTTP(w http.ResponseWriter,r *http.Request){
  if !remoteLoopback(r.RemoteAddr){http.Error(w,"local access only",403);return}
  if r.Method=="POST"{r.Body=http.MaxBytesReader(w,r.Body,16*1024)}
+ if r.URL.Path=="/assets/qrcode.min.js"{
+  b,e:=assets.ReadFile("ui/qrcode.min.js");if e!=nil{http.NotFound(w,r);return}
+  w.Header().Set("Content-Type","text/javascript; charset=utf-8");w.Header().Set("Cache-Control","private, no-store");_,_=w.Write(b);return
+ }
  if r.URL.Path=="/assets/style.css"{
   b,e:=assets.ReadFile("ui/style.css");if e!=nil{http.NotFound(w,r);return}
   w.Header().Set("Content-Type","text/css; charset=utf-8");w.Header().Set("Cache-Control","public, max-age=3600");_,_=w.Write(b);return
  }
  path:=r.URL.Path
- allowed:=map[string]bool{"/":true,"/setup":true,"/login":true,"/logout":true,"/users":true,"/users/create":true,"/users/disable":true,"/diagnostics":true,"/settings":true,"/settings/start":true,"/settings/stop":true,"/settings/test":true,"/account":true,"/account/password":true}
+ allowed:=map[string]bool{"/":true,"/setup":true,"/login":true,"/logout":true,"/users":true,"/users/create":true,"/users/disable":true,"/users/enable":true,"/users/update":true,"/users/extend":true,"/users/reset-usage":true,"/users/reset-time":true,"/users/delete":true,"/users/rotate":true,"/diagnostics":true,"/settings":true,"/settings/start":true,"/settings/stop":true,"/settings/test":true,"/account":true,"/account/password":true}
  if !allowed[path]{http.NotFound(w,r);return}
  isInstalled:=a.installed()
  if !isInstalled&&path!="/setup"{http.Redirect(w,r,"/setup",http.StatusSeeOther);return}
@@ -192,7 +205,7 @@ func(a *App) ServeHTTP(w http.ResponseWriter,r *http.Request){
  if r.Method=="POST"&&(!sameOrigin(r)||!csrfEqual(s.CSRF,r.FormValue("csrf"))){http.Error(w,"forbidden",403);return}
  a.mu.Lock();currentUsername:=a.state.Username;a.mu.Unlock()
  p:=page{Section:"home",Username:currentUsername,CSRF:s.CSRF}
- if path=="/users"||path=="/users/create"||path=="/users/disable"{p.Section="users"}
+ if path=="/users"||strings.HasPrefix(path,"/users/"){p.Section="users"}
  if path=="/diagnostics"{p.Section="diagnostics"}
  if path=="/settings"||path=="/settings/start"||path=="/settings/stop"||path=="/settings/test"{p.Section="settings"}
  if path=="/account"||path=="/account/password"{p.Section="account"}
@@ -237,8 +250,25 @@ func(a *App) ServeHTTP(w http.ResponseWriter,r *http.Request){
    if a.config.Gateway==nil{p.Error=translate(lang,"gatewayFailed")}else if e:=a.config.Gateway.Stop();e!=nil{p.Error=translate(lang,"gatewayFailed")}else{p.Notice=translate(lang,"gatewayStopped");a.emit("gateway_stop_requested","ok")}
   case "/settings/test":
    if a.config.Gateway==nil{p.Error=translate(lang,"gatewayFailed")}else if e:=a.config.Gateway.Test();e!=nil{p.Error=translate(lang,"gatewayTestFailed")}else{p.Notice=translate(lang,"gatewayTestOK");a.emit("gateway_self_test","ok")}
-  case "/users/disable":
-   if e:=a.config.Backend.DisableUser(r.FormValue("name"));e!=nil{p.Error=translate(lang,"disableFailed")}else{p.Notice=translate(lang,"disabled");a.emit("user_disabled","ok")}
+  case "/users/disable","/users/enable":
+   enabled:=path=="/users/enable"
+   if e:=a.config.Backend.SetUserEnabled(r.FormValue("name"),enabled);e!=nil{p.Error=translate(lang,"changeFailed")}else{p.Notice=translate(lang,"accountUpdated");a.emit("user_status_changed","ok")}
+  case "/users/delete":
+   if e:=a.config.Backend.DeleteUser(r.FormValue("name"));e!=nil{p.Error=translate(lang,"changeFailed")}else{p.Notice=translate(lang,"accountDeleted");a.emit("user_deleted","ok")}
+  case "/users/reset-usage":
+   if e:=a.config.Backend.ResetUsage(r.FormValue("name"));e!=nil{p.Error=translate(lang,"changeFailed")}else{p.Notice=translate(lang,"usageReset");a.emit("user_usage_reset","ok")}
+  case "/users/reset-time":
+   if e:=a.config.Backend.ResetTime(r.FormValue("name"));e!=nil{p.Error=translate(lang,"changeFailed")}else{p.Notice=translate(lang,"timeReset");a.emit("user_time_reset","ok")}
+  case "/users/update":
+   name:=r.FormValue("name");newName:=strings.TrimSpace(r.FormValue("new_name"))
+   days,e1:=strconv.Atoi(r.FormValue("days"));gb,e2:=strconv.ParseInt(r.FormValue("gb"),10,64)
+   if !validUser(newName)||e1!=nil||e2!=nil||days<1||days>3650||gb<1||gb>100000{p.Error=translate(lang,"invalidUser")}else if e:=a.config.Backend.UpdateUser(name,newName,days,gb);e!=nil{p.Error=translate(lang,"changeFailed")}else{p.Notice=translate(lang,"accountUpdated");a.emit("user_updated","ok")}
+  case "/users/extend":
+   days,e1:=strconv.Atoi(r.FormValue("days"));gb,e2:=strconv.ParseInt(r.FormValue("gb"),10,64)
+   if e1!=nil||e2!=nil||days<0||days>3650||gb<0||gb>100000||(days==0&&gb==0){p.Error=translate(lang,"invalidUser")}else if e:=a.config.Backend.ExtendUser(r.FormValue("name"),days,gb);e!=nil{p.Error=translate(lang,"changeFailed")}else{p.Notice=translate(lang,"accountUpdated");a.emit("user_extended","ok")}
+  case "/users/rotate":
+   token,e:=a.config.Backend.RotateToken(r.FormValue("name"))
+   if e!=nil{p.Error=translate(lang,"changeFailed")}else{p.CreatedName=r.FormValue("name");p.CreatedToken=token;p.Notice=translate(lang,"tokenRotated");a.emit("user_token_rotated","ok")}
   default:http.Error(w,"method not allowed",405);return
   }
  }else if r.Method!="GET"{http.Error(w,"method not allowed",405);return}
@@ -247,7 +277,25 @@ func(a *App) ServeHTTP(w http.ResponseWriter,r *http.Request){
  for _,u:=range p.Users{if !u.Disabled{expiry,e:=time.Parse(time.RFC3339,u.Expires);if e==nil&&now.Before(expiry)&&(u.QuotaBytes<=0||u.UsedBytes<u.QuotaBytes){p.Active++}}}
  if p.Section=="diagnostics"{p.Events=readEvents(a.config.DiagnosticsPath);p.LogEnabled=a.config.DiagnosticsPath!=""}
  if a.config.Gateway!=nil{p.Gateway=a.config.Gateway.Status()}
+ if p.CreatedToken!=""{
+  host:=r.Host
+  if h,_,e:=net.SplitHostPort(host);e==nil{host=h}
+  if p.Gateway.Running&&p.Gateway.Public&&validShareHost(host)&&len(p.Gateway.Fingerprint)==64{
+   _,port,e:=net.SplitHostPort(p.Gateway.Listen)
+   if e==nil{
+    endpoint:=net.JoinHostPort(host,port)
+    q:=url.Values{}
+    q.Set("v","1");q.Set("server",endpoint);q.Set("token",p.CreatedToken);q.Set("pin",p.Gateway.Fingerprint);q.Set("name",p.CreatedName)
+    p.ShareURI="aftab://profile?"+q.Encode()
+    p.ShareText="AFTAB/1\nServer: "+endpoint+"\nAccount: "+p.CreatedName+"\nToken: "+p.CreatedToken+"\nTLS Fingerprint: "+p.Gateway.Fingerprint
+   }
+  }
+ }
  a.render(w,r,p)
+}
+func validShareHost(h string)bool{
+ if ip:=net.ParseIP(h);ip!=nil{return !ip.IsLoopback()&&!ip.IsUnspecified()&&!ip.IsPrivate()}
+ return regexp.MustCompile(`^[a-zA-Z0-9-]+(\.[a-zA-Z0-9-]+)+$`).MatchString(h)
 }
 var usernamePattern=regexp.MustCompile(`^[a-zA-Z0-9._-]{3,48}$`)
 var userPattern=regexp.MustCompile(`^[a-zA-Z0-9._-]{1,80}$`)
