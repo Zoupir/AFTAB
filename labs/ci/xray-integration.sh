@@ -64,7 +64,7 @@ os.chmod(os.path.join(os.environ['WORK'],'config.json'),0o600)
 print('Ephemeral Xray configuration prepared: no external listener')
 PY
 echo "Starting isolated Xray with REALITY inbound bound to loopback"
-docker run -d --rm --platform linux/amd64 --network host --name "$NAME" --memory=300m --cpus=1.5 \
+docker run -d --platform linux/amd64 --network host --name "$NAME" --memory=300m --cpus=1.5 \
   --security-opt no-new-privileges --cap-drop ALL --read-only \
   -v "$WORK/config.json:/etc/xray/config.json:ro" "$IMAGE" run -c /etc/xray/config.json >/dev/null
 set -a
@@ -73,7 +73,7 @@ source "$WORK/test-env"
 set +a
 for i in {1..40}; do
   if (echo >/dev/tcp/127.0.0.1/"${AFTAB_TEST_XRAY_API#*:}") 2>/dev/null; then break; fi
-  if ! docker inspect "$NAME" >/dev/null 2>&1; then echo "Xray process exited";exit 1;fi
+  if [ "$(docker inspect -f {{.State.Running}} "$NAME" 2>/dev/null || echo false)" != "true" ]; then echo "Xray process exited";docker logs "$NAME" | tail -35; exit 1;fi
   sleep 0.5
 done
 if ! (echo >/dev/tcp/127.0.0.1/"${AFTAB_TEST_XRAY_API#*:}") 2>/dev/null;then
