@@ -29,6 +29,8 @@ jobs:
         run: go test -race -count=1 -timeout=90s ./...
       - name: Static analysis
         run: go vet ./...
+      - name: Real Xray-core REALITY runtime integration
+        run: bash labs/ci/xray-integration.sh
       - name: Linux executable
         run: |
           mkdir -p dist
