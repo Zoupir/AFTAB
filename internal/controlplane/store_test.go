@@ -23,6 +23,7 @@ func TestCreateListPersistDisable(t *testing.T){
  if len(rows)!=1||rows[0].Name!="ali-phone"{t.Fatalf("unexpected list %+v",rows)}
  if strings.Contains(strings.Join([]string{rows[0].UUID,rows[0].ID,rows[0].Name}," "),token){t.Fatal("leaked subscription secret in list")}
  if _,_,e:=s.Create(ctx,"ali-phone","windows",30,5);!errors.Is(e,ErrExists){t.Fatalf("duplicate not rejected: %v",e)}
+ if e:=s.MarkProvisioned(ctx,a.ID);e!=nil{t.Fatal(e)}
  if _,e:=s.LookupSubscription(ctx,token);e!=nil{t.Fatal(e)}
  if _,e:=s.LookupSubscription(ctx,"not-a-token");!errors.Is(e,ErrMissing){t.Fatal(e)}
  if e:=s.Close();e!=nil{t.Fatal(e)}
@@ -44,6 +45,7 @@ func TestAccountValidationAndQuota(t *testing.T){
  a,token,e:=s.Create(ctx,"valid","windows",30,1);if e!=nil{t.Fatal(e)}
  if a.ExpiresAt==""{t.Fatal("expiry omitted")}
  if _,e:=time.Parse(time.RFC3339,a.ExpiresAt);e!=nil{t.Fatal(e)}
+ if e:=s.MarkProvisioned(ctx,a.ID);e!=nil{t.Fatal(e)}
  if e:=s.SetUsage(ctx,a.ID,1073741824);e!=nil{t.Fatal(e)}
  if _,e:=s.LookupSubscription(ctx,token);!errors.Is(e,ErrInactive){t.Fatalf("overquota account accepted %v",e)}
  if e:=s.SetUsage(ctx,a.ID,10);e!=nil{t.Fatal(e)}
