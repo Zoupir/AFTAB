@@ -104,12 +104,12 @@ func (a *api)ServeHTTP(w http.ResponseWriter,r *http.Request){
  }
  _,_=w.Write(b)
 }
+func isLocalListener(addr string)bool{host,_,e:=net.SplitHostPort(addr);return e==nil&&net.ParseIP(host)!=nil&&net.ParseIP(host).IsLoopback()}
 func main(){
  addr:=flag.String("listen","127.0.0.1:19110","local-only admin panel listen address")
  dbpath:=flag.String("db","./data/aftab-control.sqlite","SQLite database file")
  flag.Parse()
- host,_,e:=net.SplitHostPort(*addr)
- if e!=nil||net.ParseIP(host)==nil||!net.ParseIP(host).IsLoopback(){log.Fatal("control panel must listen on a numeric loopback address")}
+ if !isLocalListener(*addr){log.Fatal("control panel must listen on a numeric loopback address")}
  secret:=os.Getenv("AFTAB_ADMIN_TOKEN")
  if len(secret)<32||len(secret)>512{log.Fatal("set AFTAB_ADMIN_TOKEN (minimum 32 characters); no insecure default password")}
  if e:=os.MkdirAll(filepath.Dir(*dbpath),0700);e!=nil{log.Fatal(e)}
