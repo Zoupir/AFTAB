@@ -35,6 +35,8 @@ jobs:
           CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o dist/aftab-linux-amd64 ./cmd/aftab
       - name: Isolated AFTAB panel preview
         run: CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o dist/aftab-panel-linux-amd64 ./cmd/panel
+      - name: Dedicated local AFTAB Xray agent
+        run: CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o dist/aftab-agent-linux-amd64 ./cmd/agent
       - name: Windows graphical executable
         run: CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags="-H=windowsgui -s -w" -o dist/aftab-windows-amd64.exe ./cmd/aftab
       - name: Create Debian service package
@@ -63,7 +65,7 @@ jobs:
       - name: Portable Linux package
         run: tar -czf dist/aftab-linux-portable.tar.gz -C "$GITHUB_WORKSPACE/dist" aftab-linux-amd64 -C "$GITHUB_WORKSPACE/packaging" aftab-server.service
       - name: Checksum manifest
-        run: cd dist && sha256sum aftab-linux-amd64 aftab-panel-linux-amd64 aftab-windows-amd64.exe aftab-server-amd64.deb aftab-windows-portable.zip aftab-linux-portable.tar.gz > SHA256SUMS.txt
+        run: cd dist && sha256sum aftab-linux-amd64 aftab-panel-linux-amd64 aftab-agent-linux-amd64 aftab-windows-amd64.exe aftab-server-amd64.deb aftab-windows-portable.zip aftab-linux-portable.tar.gz > SHA256SUMS.txt
       - name: Export reproducible Go and Node dependency lockfiles
         run: cp go.sum web/package-lock.json dist/
       - name: Upload Linux Windows and Debian artifacts
