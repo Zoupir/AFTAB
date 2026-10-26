@@ -94,9 +94,11 @@ func(s *store)credit(id string,n int64){
 }
 // trackUserConn records established account sessions so disabling, deleting,
  // or rotating an account credential terminates already-connected clients.
-func(s *store)trackUserConn(id string,c net.Conn)bool{
+func(s *store)trackUserConn(id,token string,c net.Conn)bool{
  s.mu.Lock();defer s.mu.Unlock()
- u:=s.db.Users[id];if u==nil||u.Disabled{return false}
+ u:=s.db.Users[id];if u==nil||u.Disabled||!tokenMatches(token,u.Token){return false}
+ if u.Expires!=""{expiry,e:=time.Parse(time.RFC3339,u.Expires);if e!=nil||time.Now().After(expiry){return false}}
+ if u.QuotaBytes>0&&u.UsedBytes>=u.QuotaBytes{return false}
  if s.live==nil{s.live=make(map[string]map[net.Conn]struct{})}
  if s.live[id]==nil{s.live[id]=make(map[net.Conn]struct{})}
  s.live[id][c]=struct{}{}
@@ -146,7 +148,7 @@ func serveGatewayManaged(ln net.Listener,s *store,public bool,tracked *gatewaySe
   r:=bufio.NewReaderSize(c,512)
   tokBytes,e:=r.ReadSlice('\n');if e!=nil||len(tokBytes)>128{return};tok:=string(tokBytes)
   id:=s.userFor(strings.TrimSpace(tok));if id==""{event("warn","gateway","connection_rejected","unauthorized");return}
-   if !s.trackUserConn(id,c){return}
+   if !s.trackUserConn(id,strings.TrimSpace(tok),c){return}
    defer s.untrackUserConn(id,c)
   hostBytes,e:=r.ReadSlice('\n');if e!=nil||len(hostBytes)>260{return};host:=strings.TrimSpace(string(hostBytes))
   pb:=make([]byte,2);if _,e=io.ReadFull(r,pb);e!=nil{return}
