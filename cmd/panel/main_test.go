@@ -6,10 +6,13 @@ import (
  "net/http"
  "net/http/httptest"
  "path/filepath"
+ "context"
+ "net/url"
  "strings"
  "testing"
 
  "github.com/Zoupir/AFTAB/internal/controlplane"
+ "github.com/Zoupir/AFTAB/internal/agenthttp"
 )
 
 func request(t *testing.T,handler http.Handler,method,path string,body []byte,authenticated bool)*httptest.ResponseRecorder{
@@ -48,4 +51,28 @@ func TestRejectRemoteAdminListener(t *testing.T){
   if isLocalListener(addr){t.Fatalf("public listener accepted: %s",addr)}
  }
  if !isLocalListener("127.0.0.1:19110")||!isLocalListener("[::1]:19110"){t.Fatal("loopback rejected")}
+}
+
+type mockEngine struct{add,remove int}
+func(m *mockEngine)AddUser(_ context.Context,id,uuid string)error{m.add++;return nil}
+func(m *mockEngine)RemoveUser(_ context.Context,id string)error{m.remove++;return nil}
+func TestPanelProvisionsAndRevokesThroughAgent(t *testing.T){
+ s,e:=controlplane.Open(filepath.Join(t.TempDir(),"integration.sqlite"))
+ if e!=nil{t.Fatal(e)}
+ defer s.Close()
+ engine:=&mockEngine{}
+ secret:=strings.Repeat("a",64)
+ endpoint:=httptest.NewServer(&agenthttp.Handler{Token:secret,Engine:engine})
+ defer endpoint.Close()
+ parsed,e:=url.Parse(endpoint.URL);if e!=nil{t.Fatal(e)}
+ handler:=&api{users:s,adminToken:strings.Repeat("S",64),agent:&agenthttp.LocalClient{Addr:parsed.Host,Token:secret}}
+ r:=request(t,handler,"POST","/api/v1/users",[]byte(`{"Name":"friend-android","Device":"android","Days":30,"GB":5}`),true)
+ if r.Code!=201{t.Fatalf("create: %d %s",r.Code,r.Body.String())}
+ var result struct{Account controlplane.Account `json:"account"`;Provisioning string `json:"provisioning"`}
+ if e:=json.Unmarshal(r.Body.Bytes(),&result);e!=nil{t.Fatal(e)}
+ if !result.Account.Provisioned||result.Provisioning!="registered_by_agent"||engine.add!=1{t.Fatalf("agent did not actually accept account: %+v",result)}
+ r=request(t,handler,"POST","/api/v1/users/"+result.Account.ID+"/disable",nil,true)
+ if r.Code!=200||engine.remove!=1{t.Fatalf("agent revocation failed: HTTP %d removal=%d",r.Code,engine.remove)}
+ rows,e:=s.List(context.Background());if e!=nil{t.Fatal(e)}
+ if !rows[0].Disabled{t.Fatal("database account remained active after engine revocation")}
 }
