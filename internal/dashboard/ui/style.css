@@ -2,3 +2,25 @@
 .accountForm{max-width:460px;display:grid;gap:1.1rem}.accountForm button{justify-self:start}@media(max-width:650px){.accountForm button{width:100%}}
 
 .gatewayMode{display:flex;flex-direction:row;align-items:center;gap:0.65rem}.gatewayMode input[type=checkbox]{width:18px;height:18px;min-height:18px;flex:none;accent-color:#56e4bb}.gatewayMode span{font-size:.83rem}.fingerprint{margin-top:1.25rem}
+
+
+/* Account lifecycle and one-time privacy-safe sharing */
+.shareCard{border:1px solid #3a857b;border-radius:14px;padding:1.1rem;margin-top:1.25rem;background:#0c2d35}
+.shareCard textarea{resize:vertical;width:100%;color:#d7f8ee;direction:ltr;min-height:150px;font-family:ui-monospace,Menlo,Consolas,monospace;overflow-wrap:anywhere}
+.actionRow{display:flex;flex-wrap:wrap;align-items:center;gap:.45rem;margin:.55rem 0}
+.actionRow form{display:inline-flex}
+.actionRow button{white-space:normal}
+.qrWrap{display:flex;flex-direction:column;align-items:flex-start;margin-top:1rem}
+#aftab-qr{background:white;padding:12px;border-radius:12px;width:244px;height:244px;max-width:100%;overflow:hidden}
+#aftab-qr img,#aftab-qr canvas{width:220px!important;height:220px!important;max-width:100%}
+.usersTable{min-width:840px}
+.usersTable td:last-child{min-width:320px}
+.accountDetails{margin-top:.6rem;border:1px solid var(--line);border-radius:10px;padding:.55rem}
+.accountDetails summary{cursor:pointer;font-weight:700;color:var(--accent2)}
+.detailForms{display:grid;gap:1rem;margin-top:1rem}
+.accountActionForm{display:flex;gap:.6rem;align-items:end;flex-wrap:wrap}
+.accountActionForm label{flex:1 1 115px;min-width:115px}
+.accountActionForm button{flex:none}
+button.danger{background:#5e233b;color:#ffdbe2;padding:.45rem .75rem;border:1px solid #934055;border-radius:9px}
+button.danger:hover{background:#773248}
+@media(max-width:650px){.accountActionForm{display:grid;grid-template-columns:1fr 1fr}.accountActionForm button{grid-column:1/-1}.qrWrap{align-items:center}}

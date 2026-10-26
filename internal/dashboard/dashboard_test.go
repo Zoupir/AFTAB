@@ -5,6 +5,7 @@ import (
  "crypto/sha256"
  "encoding/hex"
  "encoding/json"
+ "fmt"
  "net/http"
  "net/http/httptest"
  "net/url"
@@ -24,6 +25,18 @@ func(b *fakeBackend)CreateUser(name string,days int,gb int64)(string,error){
 func(b *fakeBackend)DisableUser(name string)error{
  b.mu.Lock();defer b.mu.Unlock();u:=b.users[name];u.Disabled=true;b.users[name]=u;return nil
 }
+
+func(b *fakeBackend)SetUserEnabled(name string,enabled bool)error{
+ b.mu.Lock();defer b.mu.Unlock()
+ u,ok:=b.users[name];if !ok{return fmt.Errorf("missing account")}
+ u.Disabled=!enabled;b.users[name]=u;return nil
+}
+func(b *fakeBackend)UpdateUser(name,newName string,days int,gb int64)error{return nil}
+func(b *fakeBackend)ExtendUser(name string,days int,gb int64)error{return nil}
+func(b *fakeBackend)ResetUsage(name string)error{return nil}
+func(b *fakeBackend)ResetTime(name string)error{return nil}
+func(b *fakeBackend)DeleteUser(name string)error{return nil}
+func(b *fakeBackend)RotateToken(name string)(string,error){return "replacement-token",nil}
 func request(method,path,form string,cookies ...*http.Cookie)*http.Request{
  r:=httptest.NewRequest(method,path,strings.NewReader(form));r.RemoteAddr="127.0.0.1:12345"
  r.Header.Set("Content-Type","application/x-www-form-urlencoded")
@@ -135,4 +148,36 @@ func TestPasswordChangeInvalidatesSessions(t *testing.T){
  newLogin:=url.Values{"username":{"owner"},"password":{"new-password-for-aftab-2026"},"csrf":{csrfCookie.Value}}
  attempt:=httptest.NewRecorder();a.ServeHTTP(attempt,request("POST","http://localhost/login",newLogin.Encode(),csrfCookie))
  if attempt.Code!=http.StatusSeeOther{t.Fatal("new password does not work")}
+}
+
+
+type shareGateway struct{}
+func(shareGateway)Status()GatewayStatus{return GatewayStatus{Running:true,Public:true,Listen:"0.0.0.0:18443",Fingerprint:strings.Repeat("a",64)}}
+func(shareGateway)Start(port int,public bool)error{return nil}
+func(shareGateway)Stop()error{return nil}
+func(shareGateway)Test()error{return nil}
+
+func TestOneTimeConnectionProfileDoesNotExposeAdministratorSecrets(t *testing.T){
+ a,_:=newFixture(t);a.config.Gateway=shareGateway{};setupFixture(t,a)
+ login:=httptest.NewRecorder()
+ a.ServeHTTP(login,request("GET","http://203.0.113.42/login",""))
+ nonce:=cookieNamed(login,"aftab_login")
+ if nonce==nil{t.Fatal("login CSRF cookie missing")}
+ credentials:=url.Values{"username":{"owner"},"password":{"correct-horse-battery-aftab"},"csrf":{nonce.Value}}
+ sessionResponse:=httptest.NewRecorder()
+ a.ServeHTTP(sessionResponse,request("POST","http://203.0.113.42/login",credentials.Encode(),nonce))
+ sid:=cookieNamed(sessionResponse,"aftab_sid");if sid==nil{t.Fatal("no authenticated session")}
+ a.mu.Lock();csrf:=a.sessions[shaKey(sid.Value)].CSRF;a.mu.Unlock()
+ create:=httptest.NewRecorder()
+ a.ServeHTTP(create,request("POST","http://203.0.113.42/users/create",url.Values{"name":{"phone"},"days":{"30"},"gb":{"30"},"csrf":{csrf}}.Encode(),sid))
+ page:=create.Body.String()
+ if create.Code!=http.StatusOK{t.Fatalf("create failed: %d",create.Code)}
+ if !strings.Contains(page,"aftab://profile?")||!strings.Contains(page,"secret-user-token")||!strings.Contains(page,"203.0.113.42%3A18443"){t.Fatal("connection profile not generated")}
+ if strings.Contains(page,"correct-horse-battery-aftab")||strings.Contains(page,"/root/.ssh")||strings.Contains(page,"admin_token"){t.Fatal("administrator secret leaked in share profile")}
+ refresh:=httptest.NewRecorder()
+ a.ServeHTTP(refresh,request("GET","http://203.0.113.42/users","",sid))
+ if strings.Contains(refresh.Body.String(),"secret-user-token"){t.Fatal("account token redisplayed")}
+ unauthorized:=httptest.NewRecorder()
+ a.ServeHTTP(unauthorized,request("POST","http://203.0.113.42/users/delete",url.Values{"name":{"phone"}}.Encode(),sid))
+ if unauthorized.Code!=http.StatusForbidden{t.Fatal("mutating endpoint accepted missing CSRF")}
 }

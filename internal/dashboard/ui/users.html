@@ -1,0 +1,95 @@
+{{define "users"}}
+<div class="eyebrow">AFTAB / USERS</div><h1>{{tr "accounts"}}</h1>
+<div class="panel">
+ <h2>{{tr "newUser"}}</h2>
+ <form class="userForm" method="post" action="/users/create">
+  <input type="hidden" name="csrf" value="{{.CSRF}}">
+  <label>{{tr "accountName"}}<input name="name" pattern="[A-Za-z0-9._-]{1,80}" required maxlength="80" autocomplete="off"></label>
+  <label>{{tr "days"}}<input name="days" type="number" min="1" max="3650" value="30" required></label>
+  <label>{{tr "quota"}}<input name="gb" type="number" min="1" max="100000" value="30" required></label>
+  <button type="submit" class="primary">{{tr "create"}}</button>
+ </form>
+ {{if .CreatedToken}}
+ <section class="shareCard">
+  <h2>{{tr "shareTitle"}}: {{.CreatedName}}</h2>
+  <p class="fine">{{tr "once"}} {{tr "shareWarning"}}</p>
+  {{if .ShareText}}
+   <label>{{tr "shareText"}}<textarea id="aftab-share-text" readonly rows="5" spellcheck="false" dir="ltr">{{.ShareText}}</textarea></label>
+   <div class="actionRow">
+    <button type="button" class="primary" id="copy-profile">{{tr "copyProfile"}}</button>
+    <button type="button" class="quiet" id="copy-token">{{tr "copyToken"}}</button>
+   </div>
+   <textarea id="aftab-profile-uri" hidden readonly>{{.ShareURI}}</textarea>
+   <div class="qrWrap"><div id="aftab-qr" aria-label="QR connection profile"></div><p class="fine">{{tr "qrHint"}}</p></div>
+   <script src="/assets/qrcode.min.js"></script>
+   <script>
+   (function(){
+    var qr=document.getElementById('aftab-qr'),text=document.getElementById('aftab-share-text');
+    var uri=document.getElementById('aftab-profile-uri');
+    if(qr&&uri&&uri.value&&typeof QRCode!=='undefined') new QRCode(qr,{text:uri.value,width:220,height:220,correctLevel:QRCode.CorrectLevel.L});
+    function copy(value){if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(value);}else{window.prompt('Copy:',value);}}
+    document.getElementById('copy-profile').addEventListener('click',function(){copy(text.value);});
+    document.getElementById('copy-token').addEventListener('click',function(){copy(document.getElementById('aftab-once-token').textContent.trim());});
+   })();
+   </script>
+  {{else}}<p class="fine">{{tr "shareGatewayMissing"}}</p>{{end}}
+  <label>{{tr "tokenOnly"}}<code class="oneTime" id="aftab-once-token">{{.CreatedToken}}</code></label>
+ </section>
+ {{end}}
+</div>
+<div class="panel"><h2>{{tr "userList"}}</h2>
+ {{if .Users}}
+ <div class="tablewrap"><table class="usersTable"><thead><tr><th>{{tr "accountName"}}</th><th>{{tr "expiry"}}</th><th>{{tr "used"}}</th><th>{{tr "state"}}</th><th>{{tr "operations"}}</th></tr></thead>
+ <tbody>{{range .Users}}<tr>
+  <td class="mono">{{.Name}}</td>
+  <td class="mono">{{.Expires}}</td>
+  <td class="mono">{{gib .UsedBytes}} / {{gib .QuotaBytes}}</td>
+  <td>{{if .Disabled}}<span class="tag bad">{{tr "inactive"}}</span>{{else}}<span class="tag good">{{tr "active"}}</span>{{end}}</td>
+  <td>
+   <div class="actionRow">
+    <form method="post" action="{{if .Disabled}}/users/enable{{else}}/users/disable{{end}}">
+     <input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="name" value="{{.Name}}">
+     <button type="submit" class="quiet">{{if .Disabled}}{{tr "enable"}}{{else}}{{tr "disable"}}{{end}}</button>
+    </form>
+    <form method="post" action="/users/reset-usage" onsubmit="return confirm('Reset used traffic?')">
+     <input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="name" value="{{.Name}}">
+     <button type="submit" class="quiet">{{tr "resetUsage"}}</button>
+    </form>
+    <form method="post" action="/users/reset-time" onsubmit="return confirm('Reset validity to plan duration?')">
+     <input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="name" value="{{.Name}}">
+     <button type="submit" class="quiet">{{tr "resetTime"}}</button>
+    </form>
+   </div>
+   <details class="accountDetails">
+    <summary>{{tr "editAndExtend"}}</summary>
+    <div class="detailForms">
+     <form class="accountActionForm" method="post" action="/users/update">
+      <input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="name" value="{{.Name}}">
+      <label>{{tr "accountName"}}<input name="new_name" pattern="[A-Za-z0-9._-]{1,80}" value="{{.Name}}" required></label>
+      <label>{{tr "days"}}<input type="number" name="days" min="1" max="3650" value="{{daysLeft .Expires}}" required></label>
+      <label>{{tr "quota"}}<input type="number" name="gb" min="1" max="100000" value="{{quotaGB .QuotaBytes}}" required></label>
+      <button type="submit" class="quiet">{{tr "saveChanges"}}</button>
+     </form>
+     <form class="accountActionForm" method="post" action="/users/extend">
+      <input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="name" value="{{.Name}}">
+      <label>{{tr "addDays"}}<input type="number" name="days" min="0" max="3650" value="0" required></label>
+      <label>{{tr "addGB"}}<input type="number" name="gb" min="0" max="100000" value="0" required></label>
+      <button type="submit" class="quiet">{{tr "extendAccount"}}</button>
+     </form>
+     <div class="actionRow">
+      <form method="post" action="/users/rotate" onsubmit="return confirm('Replace token and disconnect this user?')">
+       <input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="name" value="{{.Name}}">
+       <button type="submit" class="quiet">{{tr "newShare"}}</button>
+      </form>
+      <form method="post" action="/users/delete" onsubmit="return confirm('Permanently delete this account?')">
+       <input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="name" value="{{.Name}}">
+       <button type="submit" class="danger">{{tr "deleteAccount"}}</button>
+      </form>
+     </div>
+    </div>
+   </details>
+  </td>
+ </tr>{{end}}</tbody></table></div>
+ {{else}}<p class="muted">{{tr "emptyUsers"}}</p>{{end}}
+</div>
+{{end}}
