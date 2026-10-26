@@ -18,6 +18,7 @@ import (
 )
 
 const alterInbound="/xray.app.proxyman.command.HandlerService/AlterInbound"
+const getInboundUsers="/xray.app.proxyman.command.HandlerService/GetInboundUsers"
 var emailPattern=regexp.MustCompile(`^[a-zA-Z0-9._@-]{3,160}$`)
 var uuidPattern=regexp.MustCompile(`^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[1-8][a-fA-F0-9]{3}-[89abAB][a-fA-F0-9]{3}-[a-fA-F0-9]{12}$`)
 var tagPattern=regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$`)
@@ -89,29 +90,79 @@ func(c Client)validate()error{
  if !tagPattern.MatchString(c.InboundTag){return errors.New("invalid managed inbound tag")}
  return nil
 }
-func(c Client)invoke(ctx context.Context,payload []byte)error{
- if e:=c.validate();e!=nil{return e}
+func(c Client)call(ctx context.Context,method string,payload []byte)([]byte,error){
+ if e:=c.validate();e!=nil{return nil,e}
  ctx,cancel:=context.WithTimeout(ctx,6*time.Second);defer cancel()
  conn,e:=grpc.NewClient(c.Address,grpc.WithTransportCredentials(insecure.NewCredentials()),
    grpc.WithDefaultCallOptions(grpc.ForceCodec(wireCodec{})))
- if e!=nil{return fmt.Errorf("Xray API connection: %w",e)}
+ if e!=nil{return nil,fmt.Errorf("Xray API connection: %w",e)}
  defer conn.Close()
  response:=new(wirePacket)
- if e=conn.Invoke(ctx,alterInbound,&wirePacket{Data:payload},response);e!=nil{return fmt.Errorf("Xray AlterInbound failed: %w",e)}
- return nil
+ if e=conn.Invoke(ctx,method,&wirePacket{Data:payload},response);e!=nil{return nil,fmt.Errorf("Xray gRPC call failed: %w",e)}
+ return response.Data,nil
 }
 func(c Client)AddUser(ctx context.Context,id,uuid string)error{
  if !uuidPattern.MatchString(id)||!uuidPattern.MatchString(uuid){return errors.New("invalid account ID or VLESS UUID")}
- return c.invoke(ctx,addRequest(c.InboundTag,EmailFor(id),uuid))
+ _,e:=c.call(ctx,alterInbound,addRequest(c.InboundTag,EmailFor(id),uuid));return e
 }
 func(c Client)RemoveUser(ctx context.Context,id string)error{
  if !uuidPattern.MatchString(id){return errors.New("invalid account ID")}
- return c.invoke(ctx,removeRequest(c.InboundTag,EmailFor(id)))
+ _,e:=c.call(ctx,alterInbound,removeRequest(c.InboundTag,EmailFor(id)));return e
 }
+
+// readBytesField walks protobuf bytes fields without depending on Xray's
+// generated code. Error on any malformed wire field or unexpected wire type.
+func readBytesField(input []byte,number protowire.Number)([][]byte,error){
+ values:=make([][]byte,0,1)
+ for len(input)>0{
+  n,t,sz:=protowire.ConsumeTag(input)
+  if sz<0{return nil,errors.New("invalid Xray response tag")}
+  input=input[sz:]
+  size:=protowire.ConsumeFieldValue(n,t,input)
+  if size<0{return nil,errors.New("invalid Xray response field")}
+  if n==number{
+   if t!=protowire.BytesType{return nil,errors.New("invalid Xray response bytes")}
+   v,k:=protowire.ConsumeBytes(input)
+   if k<0{return nil,errors.New("invalid Xray response bytes value")}
+   values=append(values,append([]byte(nil),v...))
+  }
+  input=input[size:]
+ }
+ return values,nil
+}
+// GetUserUUID queries the live Xray HandlerService for this exact account.
+// The control-plane uses the same method after mutations in integration tests.
+// A user that is not present returns found=false; any gRPC failure is returned.
+func(c Client)GetUserUUID(ctx context.Context,id string)(string,bool,error){
+ if !uuidPattern.MatchString(id){return "",false,errors.New("invalid account ID")}
+ request:=fieldStr(nil,1,c.InboundTag)
+ request=fieldStr(request,2,EmailFor(id))
+ response,e:=c.call(ctx,getInboundUsers,request)
+ if e!=nil{return "",false,e}
+ users,e:=readBytesField(response,1)
+ if e!=nil{return "",false,e}
+ for _,user:=range users{
+  emails,e:=readBytesField(user,2)
+  if e!=nil{return "",false,e}
+  if len(emails)==0||string(emails[0])!=EmailFor(id){continue}
+  accounts,e:=readBytesField(user,3)
+  if e!=nil{return "",false,e}
+  if len(accounts)==0{return "",false,errors.New("missing VLESS account")}
+  ty,e:=readBytesField(accounts[0],1);if e!=nil{return "",false,e}
+  if len(ty)==0||string(ty[0])!="xray.proxy.vless.Account"{return "",false,errors.New("incorrect account type")}
+  body,e:=readBytesField(accounts[0],2);if e!=nil{return "",false,e}
+  if len(body)==0{return "",false,errors.New("empty VLESS account")}
+  uuids,e:=readBytesField(body[0],1);if e!=nil{return "",false,e}
+  if len(uuids)==0{return "",false,errors.New("missing VLESS UUID")}
+  return string(uuids[0]),true,nil
+ }
+ return "",false,nil
+}
+
 func ValidateClient(c Client)error{return c.validate()}
 func SecretSafeError(err error)string{
  if err==nil{return ""}
  s:=err.Error()
- if strings.Contains(s,"Xray AlterInbound failed") {return "xray_runtime_unavailable_or_rejected"}
+ if strings.Contains(s,"Xray gRPC call failed") {return "xray_runtime_unavailable_or_rejected"}
  return "invalid_agent_configuration"
 }
