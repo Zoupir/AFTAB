@@ -45,7 +45,7 @@ func (a *api)ServeHTTP(w http.ResponseWriter,r *http.Request){
  w.Header().Set("X-Frame-Options","DENY")
  w.Header().Set("Referrer-Policy","no-referrer")
  w.Header().Set("Cache-Control","no-store")
- w.Header().Set("Content-Security-Policy","default-src 'self'; base-uri 'none'; frame-ancestors 'none'; object-src 'none'; connect-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'")
+ w.Header().Set("Content-Security-Policy","default-src 'self'; base-uri 'none'; frame-ancestors 'none'; object-src 'none'; connect-src 'self'; img-src 'self' data:; script-src 'self'; style-src 'self' 'unsafe-inline'")
  if r.URL.Path=="/health"&&r.Method=="GET"{
   w.Header().Set("Content-Type","application/json")
   _,_=io.WriteString(w,`{"status":"ok","engine":"isolated-agent-optional"}`)
