@@ -64,7 +64,7 @@ os.chmod(os.path.join(os.environ['WORK'],'config.json'),0o600)
 print('Ephemeral Xray configuration prepared: no external listener')
 PY
 echo "Starting isolated Xray with REALITY inbound bound to loopback"
-docker run -d --platform linux/amd64 --network host --name "$NAME" --memory=300m --cpus=1.5 \
+docker run -d --platform linux/amd64 --network host --name "$NAME" --user "$(id -u):$(id -g)" --memory=300m --cpus=1.5 \
   --security-opt no-new-privileges --cap-drop ALL --read-only \
   -v "$WORK/config.json:/etc/xray/config.json:ro" "$IMAGE" run -c /etc/xray/config.json >/dev/null
 set -a
